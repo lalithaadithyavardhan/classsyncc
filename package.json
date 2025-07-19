@@ -1,0 +1,21 @@
+{
+  "name": "corserclasssync",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node backend-server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@abandonware/noble": "^1.9.2-26",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "bluetooth-hci-socket": "^0.5.1",
+    "ws": "^8.14.2",
+    "uuid": "^9.0.1"
+  }
+}

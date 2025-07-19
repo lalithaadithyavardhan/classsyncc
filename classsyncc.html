@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClassSync - Academic Management System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        }
+        .sidebar {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .timetable-cell {
+            transition: all 0.2s ease;
+        }
+        .timetable-cell:hover {
+            transform: scale(1.05);
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: -100%;
+                top: 0;
+                z-index: 50;
+                height: 100vh;
+            }
+            .sidebar.active {
+                left: 0;
+            }
+            .overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: rgba(0, 0, 0, 0.5);
+                z-index: 40;
+            }
+            .overlay.active {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <!-- Login Container -->
+    <div id="login-container" class="min-h-screen flex items-center justify-center">
+        <div class="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
+            <div class="text-center mb-8">
+                <div class="gradient-bg w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-calendar-alt text-white text-2xl"></i>
+                </div>
+                <h1 class="text-3xl font-bold text-gray-900">ClassSync</h1>
+                <p class="text-gray-600 mt-2">Academic Management System</p>
+            </div>
+            
+            <form id="login-form" class="space-y-6">
+                <div>
+                    <label for="role" class="block text-sm font-medium text-gray-700 mb-2">Login as:</label>
+                    <select id="role" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">Select Role</option>
+                        <option value="student">Student</option>
+                        <option value="faculty">Faculty</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label for="roll" class="block text-sm font-medium text-gray-700 mb-2">Roll Number / ID:</label>
+                    <input type="text" id="roll" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Enter your ID">
+                </div>
+                
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-2">Password:</label>
+                    <input type="password" id="password" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Enter your password">
+                </div>
+                
+                <button type="submit" class="w-full gradient-bg text-white py-3 px-4 rounded-lg font-medium hover:opacity-90 transition-opacity">
+                    <i class="fas fa-sign-in-alt mr-2"></i>Login
+                </button>
+            </form>
+            
+            <div id="login-error" class="hidden mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm"></div>
+            
+            <!-- Demo Credentials -->
+            <div class="mt-8 p-4 bg-gray-50 rounded-lg">
+                <h3 class="text-sm font-medium text-gray-700 mb-3">Demo Credentials:</h3>
+                <div class="space-y-2 text-xs text-gray-600">
+                    <div><strong>Student:</strong> S101 / pass</div>
+                    <div><strong>Faculty:</strong> F201 / pass</div>
+                    <div><strong>Admin:</strong> admin / admin</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Container (Hidden initially) -->
+    <div id="dashboard-container" class="hidden">
+        <!-- Mobile Menu Button -->
+        <div class="md:hidden fixed top-4 left-4 z-50">
+            <button id="menuBtn" class="p-2 rounded-lg bg-white shadow-md text-indigo-600">
+                <i class="fas fa-bars text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Overlay -->
+        <div id="overlay" class="overlay"></div>
+
+        <!-- Sidebar -->
+        <div id="sidebar" class="sidebar w-64 bg-white shadow-lg fixed h-full flex flex-col">
+            <!-- Logo -->
+            <div class="p-4 flex items-center justify-center gradient-bg">
+                <div class="text-white text-2xl font-bold flex items-center">
+                    <i class="fas fa-calendar-alt mr-3"></i>
+                    <span>ClassSync</span>
+                </div>
+            </div>
+
+            <!-- User Profile -->
+            <div class="p-4 border-b flex items-center">
+                <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                    <i class="fas fa-user text-xl"></i>
+                </div>
+                <div class="ml-3">
+                    <p class="font-semibold" id="userName">John Doe</p>
+                    <p class="text-sm text-gray-500" id="userRole">Student</p>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex-1 overflow-y-auto">
+                <nav class="p-2">
+                    <div>
+                        <p class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Main</p>
+                        <a href="#" class="flex items-center px-3 py-3 text-indigo-600 bg-indigo-50 rounded-lg" onclick="showSection('dashboard')">
+                            <i class="fas fa-home mr-3"></i>
+                            <span>Dashboard</span>
+                        </a>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1" onclick="showSection('timetable')">
+                            <i class="fas fa-calendar mr-3"></i>
+                            <span>Timetable</span>
+                        </a>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1" onclick="showSection('attendance')">
+                            <i class="fas fa-check-circle mr-3"></i>
+                            <span>Attendance</span>
+                        </a>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1" onclick="showSection('notifications')">
+                            <i class="fas fa-bell mr-3"></i>
+                            <span>Notifications</span>
+                            <span class="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full">3</span>
+                        </a>
+                    </div>
+
+                    <div class="mt-6">
+                        <p class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Settings</p>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1">
+                            <i class="fas fa-cog mr-3"></i>
+                            <span>Settings</span>
+                        </a>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1" onclick="logout()">
+                            <i class="fas fa-sign-out-alt mr-3"></i>
+                            <span>Logout</span>
+                        </a>
+                    </div>
+                </nav>
+            </div>
+
+            <!-- App Version -->
+            <div class="p-4 text-center text-xs text-gray-500 border-t">
+                ClassSync v2.0.0
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="md:ml-64 min-h-screen">
+            <!-- Header -->
+            <header class="bg-white shadow-sm">
+                <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
+                    <h1 class="text-2xl font-bold text-gray-900" id="pageTitle">Dashboard</h1>
+                    <div class="flex items-center space-x-4">
+                        <div class="relative">
+                            <button class="p-2 rounded-full hover:bg-gray-100">
+                                <i class="fas fa-bell text-gray-600"></i>
+                                <span class="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500"></span>
+                            </button>
+                        </div>
+                        <div class="relative">
+                            <button id="userMenuBtn" class="flex items-center space-x-2 focus:outline-none">
+                                <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <span class="hidden md:inline-block font-medium" id="headerUserName">John</span>
+                                <i class="fas fa-chevron-down text-xs"></i>
+                            </button>
+                            <div id="userMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
+                                <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Your Profile</a>
+                                <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
+                                <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="logout()">Logout</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main Content Area -->
+            <main class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+                <!-- Dashboard Section -->
+                <div id="dashboardSection">
+                    <!-- Student Dashboard -->
+                    <div id="studentView" class="hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <!-- Current Class Card -->
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover transition-all duration-300">
+                                <div class="gradient-bg p-4 text-white">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-chalkboard-teacher text-2xl mr-3"></i>
+                                        <h2 class="text-xl font-bold">Current Class</h2>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div class="flex items-center mb-4">
+                                        <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 mr-4">
+                                            <i class="fas fa-book text-xl"></i>
+                                        </div>
+                                        <div>
+                                            <h3 class="font-bold text-lg">Data Structures</h3>
+                                            <p class="text-gray-500">CS201</p>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-3">
+                                        <div class="flex items-center">
+                                            <i class="fas fa-user-tie text-gray-500 mr-3 w-5"></i>
+                                            <span>Prof. Smith</span>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <i class="fas fa-clock text-gray-500 mr-3 w-5"></i>
+                                            <span>10:00 AM - 11:30 AM</span>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <i class="fas fa-door-open text-gray-500 mr-3 w-5"></i>
+                                            <span>Room 302</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Next Class Card -->
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover transition-all duration-300">
+                                <div class="bg-indigo-100 p-4">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-arrow-right text-2xl mr-3 text-indigo-600"></i>
+                                        <h2 class="text-xl font-bold text-indigo-800">Next Class</h2>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div class="flex items-center mb-4">
+                                        <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mr-4">
+                                            <i class="fas fa-laptop-code text-xl"></i>
+                                        </div>
+                                        <div>
+                                            <h3 class="font-bold text-lg">Algorithms</h3>
+                                            <p class="text-gray-500">CS202</p>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-3">
+                                        <div class="flex items-center">
+                                            <i class="fas fa-user-tie text-gray-500 mr-3 w-5"></i>
+                                            <span>Prof. Johnson</span>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <i class="fas fa-clock text-gray-500 mr-3 w-5"></i>
+                                            <span>12:00 PM - 1:30 PM</span>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <i class="fas fa-door-open text-gray-500 mr-3 w-5"></i>
+                                            <span>Room 415</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Quick Actions -->
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover transition-all duration-300">
+                                <div class="bg-gray-100 p-4">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-bolt text-2xl mr-3 text-gray-600"></i>
+                                        <h2 class="text-xl font-bold text-gray-800">Quick Actions</h2>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <button onclick="showSection('timetable')" class="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 text-blue-600">
+                                            <i class="fas fa-calendar-alt text-xl mb-2"></i>
+                                            <span class="text-sm">Full Schedule</span>
+                                        </button>
+                                        <button onclick="showSection('attendance')" class="flex flex-col items-center justify-center p-4 bg-green-50 rounded-lg hover:bg-green-100 text-green-600">
+                                            <i class="fas fa-check-circle text-xl mb-2"></i>
+                                            <span class="text-sm">Mark Attendance</span>
+                                        </button>
+                                        <button onclick="showSection('notifications')" class="flex flex-col items-center justify-center p-4 bg-purple-50 rounded-lg hover:bg-purple-100 text-purple-600">
+                                            <i class="fas fa-bell text-xl mb-2"></i>
+                                            <span class="text-sm">Notifications</span>
+                                        </button>
+                                        <button class="flex flex-col items-center justify-center p-4 bg-orange-50 rounded-lg hover:bg-orange-100 text-orange-600">
+                                            <i class="fas fa-question-circle text-xl mb-2"></i>
+                                            <span class="text-sm">Help</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Weekly Timetable -->
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+                            <div class="gradient-bg p-4 text-white">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-calendar-week text-2xl mr-3"></i>
+                                        <h2 class="text-xl font-bold">Weekly Timetable</h2>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <button class="p-2 rounded-full hover:bg-indigo-700">
+                                            <i class="fas fa-chevron-left"></i>
+                                        </button>
+                                        <span class="font-medium">Week of Oct 16, 2023</span>
+                                        <button class="p-2 rounded-full hover:bg-indigo-700">
+                                            <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead>
+                                        <tr class="bg-gray-50">
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monday</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tuesday</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wednesday</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thursday</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Friday</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <!-- 8:00 AM -->
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">8:00 AM</td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <div class="timetable-cell bg-blue-50 border-l-4 border-blue-500 p-2 rounded cursor-pointer">
+                                                    <p class="font-medium text-blue-800">Math</p>
+                                                    <p class="text-xs text-blue-600">Room 201</p>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap"></td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <div class="timetable-cell bg-blue-50 border-l-4 border-blue-500 p-2 rounded cursor-pointer">
+                                                    <p class="font-medium text-blue-800">Math</p>
+                                                    <p class="text-xs text-blue-600">Room 201</p>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap"></td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <div class="timetable-cell bg-blue-50 border-l-4 border-blue-500 p-2 rounded cursor-pointer">
+                                                    <p class="font-medium text-blue-800">Math</p>
+                                                    <p class="text-xs text-blue-600">Room 201</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <!-- 10:00 AM -->
+                                        <tr class="bg-gray-50">
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">10:00 AM</td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <div class="timetable-cell bg-purple-50 border-l-4 border-purple-500 p-2 rounded cursor-pointer">
+                                                    <p class="font-medium text-purple-800">Data Structures</p>
+                                                    <p class="text-xs text-purple-600">Room 302</p>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <div class="timetable-cell bg-green-50 border-l-4 border-green-500 p-2 rounded cursor-pointer">
+                                                    <p class="font-medium text-green-800">Physics</p>
+                                                    <p class="text-xs text-green-600">Room 105</p>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <div class="timetable-cell bg-purple-50 border-l-4 border-purple-500 p-2 rounded cursor-pointer">
+                                                    <p class="font-medium text-purple-800">Data Structures</p>
+                                                    <p class="text-xs text-purple-600">Room 302</p>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <div class="timetable-cell bg-green-50 border-l-4 border-green-500 p-2 rounded cursor-pointer">
+                                                    <p class="font-medium text-green-800">Physics</p>
+                                                    <p class="text-xs text-green-600">Room 105</p>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                <div class="timetable-cell bg-purple-50 border-l-4 border-purple-500 p-2 rounded cursor-pointer">
+                                                    <p class="font-medium text-purple-800">Data Structures</p>
+                                                    <p class="text-xs text-purple-600">Room 302</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Recent Notifications -->
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                            <div class="gradient-bg p-4 text-white">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-bell text-2xl mr-3"></i>
+                                        <h2 class="text-xl font-bold">Recent Notifications</h2>
+                                    </div>
+                                    <button class="text-sm font-medium hover:text-indigo-200">View All</button>
+                                </div>
+                            </div>
+                            <div class="divide-y divide-gray-200">
+                                <div class="p-4 hover:bg-gray-50 cursor-pointer">
+                                    <div class="flex items-start">
+                                        <div class="flex-shrink-0 pt-1">
+                                            <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-500">
+                                                <i class="fas fa-exclamation-circle"></i>
+                                            </div>
+                                        </div>
+                                        <div class="ml-3 flex-1">
+                                            <div class="flex items-center justify-between">
+                                                <p class="text-sm font-medium text-gray-900">Class Cancelled</p>
+                                                <span class="text-xs text-gray-500">2h ago</span>
+                                            </div>
+                                            <p class="text-sm text-gray-500">Physics class at 10:00 AM has been cancelled by Prof. Johnson.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Faculty Dashboard -->
+                    <div id="facultyView" class="hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <!-- Upcoming Class Card -->
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover transition-all duration-300">
+                                <div class="gradient-bg p-4 text-white">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-chalkboard-teacher text-2xl mr-3"></i>
+                                        <h2 class="text-xl font-bold">Next Class</h2>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div class="flex items-center mb-4">
+                                        <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 mr-4">
+                                            <i class="fas fa-book text-xl"></i>
+                                        </div>
+                                        <div>
+                                            <h3 class="font-bold text-lg">Data Structures</h3>
+                                            <p class="text-gray-500">CS201 - Section A</p>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-3">
+                                        <div class="flex items-center">
+                                            <i class="fas fa-clock text-gray-500 mr-3 w-5"></i>
+                                            <span>10:00 AM - 11:30 AM</span>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <i class="fas fa-door-open text-gray-500 mr-3 w-5"></i>
+                                            <span>Room 302</span>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <i class="fas fa-users text-gray-500 mr-3 w-5"></i>
+                                            <span>42 Students</span>
+                                        </div>
+                                    </div>
+                                    <div class="mt-6 flex space-x-2">
+                                        <button onclick="showSection('attendance')" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+                                            <i class="fas fa-edit mr-2"></i>Start Attendance
+                                        </button>
+                                        <button class="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 text-sm font-medium">
+                                            <i class="fas fa-times mr-2"></i>Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Today's Schedule -->
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover transition-all duration-300">
+                                <div class="bg-indigo-100 p-4">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-calendar-day text-2xl mr-3 text-indigo-600"></i>
+                                        <h2 class="text-xl font-bold text-indigo-800">Today's Schedule</h2>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div class="space-y-4">
+                                        <div class="flex items-start">
+                                            <div class="flex-shrink-0 pt-1">
+                                                <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                                                    <i class="fas fa-book"></i>
+                                                </div>
+                                            </div>
+                                            <div class="ml-3">
+                                                <p class="text-sm font-medium text-gray-900">Data Structures</p>
+                                                <p class="text-xs text-gray-500">10:00 AM - 11:30 AM | Room 302</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-start">
+                                            <div class="flex-shrink-0 pt-1">
+                                                <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                                                    <i class="fas fa-laptop-code"></i>
+                                                </div>
+                                            </div>
+                                            <div class="ml-3">
+                                                <p class="text-sm font-medium text-gray-900">Algorithms Lab</p>
+                                                <p class="text-xs text-gray-500">1:00 PM - 3:00 PM | Lab 4</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Quick Actions -->
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover transition-all duration-300">
+                                <div class="bg-gray-100 p-4">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-bolt text-2xl mr-3 text-gray-600"></i>
+                                        <h2 class="text-xl font-bold text-gray-800">Quick Actions</h2>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <button onclick="showSection('timetable')" class="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 text-blue-600">
+                                            <i class="fas fa-calendar-alt text-xl mb-2"></i>
+                                            <span class="text-sm">Schedule</span>
+                                        </button>
+                                        <button onclick="showSection('attendance')" class="flex flex-col items-center justify-center p-4 bg-green-50 rounded-lg hover:bg-green-100 text-green-600">
+                                            <i class="fas fa-check-circle text-xl mb-2"></i>
+                                            <span class="text-sm">Attendance</span>
+                                        </button>
+                                        <button class="flex flex-col items-center justify-center p-4 bg-purple-50 rounded-lg hover:bg-purple-100 text-purple-600">
+                                            <i class="fas fa-bullhorn text-xl mb-2"></i>
+                                            <span class="text-sm">Announce</span>
+                                        </button>
+                                        <button class="flex flex-col items-center justify-center p-4 bg-orange-50 rounded-lg hover:bg-orange-100 text-orange-600">
+                                            <i class="fas fa-user-clock text-xl mb-2"></i>
+                                            <span class="text-sm">Substitute</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Admin Dashboard -->
+                    <div id="adminView" class="hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <!-- Quick Stats -->
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover transition-all duration-300">
+                                <div class="gradient-bg p-4 text-white">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-chart-line text-2xl mr-3"></i>
+                                        <h2 class="text-xl font-bold">Quick Stats</h2>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="bg-blue-50 p-4 rounded-lg text-center">
+                                            <p class="text-2xl font-bold text-blue-600">42</p>
+                                            <p class="text-sm text-blue-500">Faculty</p>
+                                        </div>
+                                        <div class="bg-green-50 p-4 rounded-lg text-center">
+                                            <p class="text-2xl font-bold text-green-600">1,250</p>
+                                            <p class="text-sm text-green-500">Students</p>
+                                        </div>
+                                        <div class="bg-purple-50 p-4 rounded-lg text-center">
+                                            <p class="text-2xl font-bold text-purple-600">18</p>
+                                            <p class="text-sm text-purple-500">Classes Today</p>
+                                        </div>
+                                        <div class="bg-yellow-50 p-4 rounded-lg text-center">
+                                            <p class="text-2xl font-bold text-yellow-600">2</p>
+                                            <p class="text-sm text-yellow-500">Cancellations</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Quick Actions -->
+                            <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover transition-all duration-300">
+                                <div class="bg-gray-100 p-4">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-bolt text-2xl mr-3 text-gray-600"></i>
+                                        <h2 class="text-xl font-bold text-gray-800">Admin Actions</h2>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <button onclick="showSection('timetable')" class="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 text-blue-600">
+                                            <i class="fas fa-calendar-plus text-xl mb-2"></i>
+                                            <span class="text-sm">Create Schedule</span>
+                                        </button>
+                                        <button class="flex flex-col items-center justify-center p-4 bg-green-50 rounded-lg hover:bg-green-100 text-green-600">
+                                            <i class="fas fa-user-plus text-xl mb-2"></i>
+                                            <span class="text-sm">Add User</span>
+                                        </button>
+                                        <button class="flex flex-col items-center justify-center p-4 bg-purple-50 rounded-lg hover:bg-purple-100 text-purple-600">
+                                            <i class="fas fa-bullhorn text-xl mb-2"></i>
+                                            <span class="text-sm">Announcement</span>
+                                        </button>
+                                        <button class="flex flex-col items-center justify-center p-4 bg-orange-50 rounded-lg hover:bg-orange-100 text-orange-600">
+                                            <i class="fas fa-cog text-xl mb-2"></i>
+                                            <span class="text-sm">Settings</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Attendance Section -->
+                <div id="attendanceSection" class="hidden">
+                    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                        <div class="gradient-bg p-4 text-white">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <i class="fas fa-check-circle text-2xl mr-3"></i>
+                                    <h2 class="text-xl font-bold">Bluetooth Attendance System</h2>
+                                </div>
+                                <button onclick="showSection('dashboard')" class="text-sm font-medium hover:text-indigo-200">
+                                    <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-6">
+                            <div id="attendanceContent">
+                                <!-- Attendance content will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timetable Section -->
+                <div id="timetableSection" class="hidden">
+                    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                        <div class="gradient-bg p-4 text-white">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <i class="fas fa-calendar-alt text-2xl mr-3"></i>
+                                    <h2 class="text-xl font-bold">Weekly Timetable</h2>
+                                </div>
+                                <button onclick="showSection('dashboard')" class="text-sm font-medium hover:text-indigo-200">
+                                    <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-6">
+                            <div id="timetableContent">
+                                <!-- Timetable content will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications Section -->
+                <div id="notificationsSection" class="hidden">
+                    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                        <div class="gradient-bg p-4 text-white">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <i class="fas fa-bell text-2xl mr-3"></i>
+                                    <h2 class="text-xl font-bold">Notifications</h2>
+                                </div>
+                                <button onclick="showSection('dashboard')" class="text-sm font-medium hover:text-indigo-200">
+                                    <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-6">
+                            <div id="notificationsContent">
+                                <!-- Notifications content will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="integrated-app.js"></script>
+</body>
+</html>
