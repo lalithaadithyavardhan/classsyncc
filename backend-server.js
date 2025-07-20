@@ -5,14 +5,40 @@ const cors = require('cors');
 const path = require('path');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
+const { 
+  connectToMongoDB, 
+  insertUser, 
+  insertAttendanceRecord, 
+  findUserByRoll, 
+  getAttendanceByDate,
+  closeMongoDBConnection 
+} = require('./mongodb-config');
+const config = require('./config');
 const app = express();
-const PORT = 3000;
+const PORT = config.PORT;
 
 // Create WebSocket server
 const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(cors());
+// Initialize MongoDB connection
+async function initializeServer() {
+  try {
+    await connectToMongoDB();
+    console.log('🚀 Server initialized with MongoDB connection');
+  } catch (error) {
+    console.error('❌ Failed to initialize MongoDB connection:', error);
+    process.exit(1);
+  }
+}
+
+// Initialize server on startup
+initializeServer();
+
+app.use(cors({
+  origin: config.CORS_ORIGIN,
+  credentials: true
+}));
 app.use(bodyParser.json());
 app.use(express.static(__dirname));
 
@@ -112,7 +138,7 @@ function handleDeviceDiscovery(clientId, data) {
 }
 
 // Handle attendance request from student
-function handleAttendanceRequest(clientId, data) {
+async function handleAttendanceRequest(clientId, data) {
   const { roll, deviceId } = data;
   
   if (!todaySessionActive) {
@@ -156,15 +182,35 @@ function handleAttendanceRequest(clientId, data) {
     return;
   }
   
-  // Mark attendance
-  attendanceRecords.push({
-    roll,
-    date: todayStr(),
-    status: 'Present (Bluetooth)',
-    deviceId,
-    rssi: discoveredDevice.rssi,
-    timestamp: Date.now()
-  });
+  // Mark attendance in MongoDB
+  try {
+    await insertAttendanceRecord({
+      roll,
+      date: todayStr(),
+      status: 'Present (Bluetooth)',
+      deviceId,
+      rssi: discoveredDevice.rssi,
+      timestamp: new Date()
+    });
+    
+    // Also keep in memory for backward compatibility
+    attendanceRecords.push({
+      roll,
+      date: todayStr(),
+      status: 'Present (Bluetooth)',
+      deviceId,
+      rssi: discoveredDevice.rssi,
+      timestamp: Date.now()
+    });
+  } catch (error) {
+    console.error('Error saving attendance to MongoDB:', error);
+    sendToClient(clientId, {
+      type: 'ATTENDANCE_RESPONSE',
+      success: false,
+      message: 'Database error occurred.'
+    });
+    return;
+  }
   
   sendToClient(clientId, {
     type: 'ATTENDANCE_RESPONSE',
@@ -297,6 +343,25 @@ app.post('/api/attendance/manual', (req, res) => {
 
 // Start server
 server.listen(PORT, () => {
-  console.log(`ClassSync Bluetooth server running at http://localhost:${PORT}`);
-  console.log('WebSocket server ready for Bluetooth communication');
+  config.logConfig();
+  console.log(`🚀 ClassSync Server running on port ${PORT}`);
+  if (config.isProduction()) {
+    console.log(`🌐 Deployed at: ${config.BASE_URL}`);
+  } else {
+    console.log(`📱 Open ${config.BASE_URL} in your browser`);
+  }
+  console.log('🔗 WebSocket server ready for Bluetooth communication');
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Shutting down server...');
+  await closeMongoDBConnection();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Shutting down server...');
+  await closeMongoDBConnection();
+  process.exit(0);
 });

@@ -1,10 +1,14 @@
 {
   "name": "corserclasssync",
   "version": "1.0.0",
+  "homepage": "https://lalithaadithyavardhan.github.io/classsyncc",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node backend-server.js"
+    "start": "node backend-server.js",
+    "build": "react-scripts build",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
   },
   "keywords": [],
   "author": "",
@@ -12,10 +16,16 @@
   "description": "",
   "dependencies": {
     "@abandonware/noble": "^1.9.2-26",
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
     "bluetooth-hci-socket": "^0.5.1",
-    "ws": "^8.14.2",
-    "uuid": "^9.0.1"
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "mongodb": "^6.17.0",
+    "react-scripts": "^0.0.0",
+    "uuid": "^9.0.1",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
   }
 }
