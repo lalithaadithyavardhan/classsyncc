@@ -6,12 +6,15 @@ const config = require('./config');
 const MONGODB_URI = config.MONGODB_URI;
 
 // Database and Collection names
-const DB_NAME = config.DB_NAME;
+const DB_NAME = config.classsync;
 const COLLECTIONS = config.COLLECTIONS;
 
 // MongoDB Client instance
 let client = null;
 let db = null;
+
+
+
 
 // Connect to MongoDB
 async function connectToMongoDB() {
@@ -26,10 +29,10 @@ async function connectToMongoDB() {
       });
       
       await client.connect();
-      console.log('✅ Connected to MongoDB Atlas successfully!');
+      console.log(' Connected to MongoDB Atlas successfully!');
       
       db = client.db(DB_NAME);
-      console.log(`📊 Using database: ${DB_NAME}`);
+      console.log(`Using database: ${DB_NAME}`);
       
       // Create collections if they don't exist
       await createCollections();
@@ -37,7 +40,7 @@ async function connectToMongoDB() {
     
     return { client, db };
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
+    console.error(' MongoDB connection error:', error);
     throw error;
   }
 }
@@ -51,7 +54,7 @@ async function createCollections() {
     for (const collectionName of Object.values(COLLECTIONS)) {
       if (!collectionNames.includes(collectionName)) {
         await db.createCollection(collectionName);
-        console.log(`📁 Created collection: ${collectionName}`);
+        console.log(` Created collection: ${collectionName}`);
       }
     }
   } catch (error) {
@@ -80,7 +83,7 @@ async function closeMongoDBConnection() {
       await client.close();
       client = null;
       db = null;
-      console.log('🔌 MongoDB connection closed.');
+      console.log(' MongoDB connection closed.');
     }
   } catch (error) {
     console.error('Error closing MongoDB connection:', error);
@@ -92,10 +95,10 @@ async function testConnection() {
   try {
     const { db } = await connectToMongoDB();
     const result = await db.admin().ping();
-    console.log('🏓 MongoDB ping result:', result);
+    console.log(' MongoDB ping result:', result);
     return true;
   } catch (error) {
-    console.error('❌ MongoDB connection test failed:', error);
+    console.error(' MongoDB connection test failed:', error);
     return false;
   }
 }
@@ -105,7 +108,7 @@ async function insertUser(userData) {
   try {
     const collection = getCollection(COLLECTIONS.USERS);
     const result = await collection.insertOne(userData);
-    console.log('👤 User inserted:', result.insertedId);
+    console.log(' User inserted:', result.insertedId);
     return result;
   } catch (error) {
     console.error('Error inserting user:', error);
@@ -117,7 +120,7 @@ async function insertAttendanceRecord(attendanceData) {
   try {
     const collection = getCollection(COLLECTIONS.ATTENDANCE);
     const result = await collection.insertOne(attendanceData);
-    console.log('📝 Attendance record inserted:', result.insertedId);
+    console.log(' Attendance record inserted:', result.insertedId);
     return result;
   } catch (error) {
     console.error('Error inserting attendance record:', error);
