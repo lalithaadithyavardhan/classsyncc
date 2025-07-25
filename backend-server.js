@@ -1,4 +1,4 @@
-require('dotenv').config(); // Loads the .env file from Render
+require('dotenv').config(); // <-- This MUST be the first line to load your .env file on Render
 
 // ClassSync Node.js Back-End (Final Unified Version)
 const express = require('express');
@@ -20,7 +20,7 @@ const {
   getCollection,
   COLLECTIONS,
   closeMongoDBConnection,
-  // Import the new functions
+  // Import the new functions for admin and timetable features
   getUsersByRole,
   insertTimetableEntry,
   findTimetableForStudent,
@@ -61,7 +61,7 @@ app.get('/', (req, res) => {
 });
 
 
-// --- State Management ---
+// --- State Management (For live WebSocket sessions) ---
 let todaySessionActive = false;
 let activeBluetoothSession = null;
 let connectedClients = new Map();
@@ -97,8 +97,33 @@ wss.on('connection', (ws, req) => {
 });
 
 function handleWebSocketMessage(clientId, data) {
-    // This is a placeholder for your existing WebSocket logic which is correct
-    // (handleDeviceDiscovery, handleFacultyScanStart, etc.)
+  switch (data.type) {
+    case 'BLUETOOTH_DEVICE_DISCOVERED':
+      handleDeviceDiscovery(clientId, data);
+      break;
+    case 'ATTENDANCE_REQUEST':
+      handleAttendanceRequest(clientId, data);
+      break;
+    case 'FACULTY_SCAN_START':
+      handleFacultyScanStart(clientId, data);
+      break;
+    case 'FACULTY_SCAN_STOP':
+      handleFacultyScanStop(clientId, data);
+      break;
+  }
+}
+
+function handleDeviceDiscovery(clientId, data) {
+  const { deviceId, deviceName, rssi, roll } = data;
+  discoveredDevices.set(deviceId, { deviceId, deviceName, rssi, roll, timestamp: Date.now(), clientId });
+  console.log(`Device discovered: ${deviceName} (${deviceId}) - RSSI: ${rssi}`);
+  
+  if (activeBluetoothSession && activeBluetoothSession.facultyClientId) {
+    const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
+    if (facultyWs) {
+      facultyWs.send(JSON.stringify({ type: 'DEVICE_FOUND', device: { deviceId, deviceName, rssi, roll } }));
+    }
+  }
 }
 
 async function handleAttendanceRequest(clientId, data) {
@@ -147,6 +172,27 @@ async function handleAttendanceRequest(clientId, data) {
     sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Database error occurred.' });
   }
 }
+
+function handleFacultyScanStart(clientId, data) {
+  activeBluetoothSession = { facultyClientId: clientId, startTime: Date.now(), discoveredDevices: [] };
+  discoveredDevices.clear();
+  sendToClient(clientId, { type: 'SCAN_STARTED', message: 'Bluetooth scanning started. Waiting for student devices...' });
+  console.log('Faculty started Bluetooth scanning');
+}
+
+function handleFacultyScanStop(clientId, data) {
+  activeBluetoothSession = null;
+  sendToClient(clientId, { type: 'SCAN_STOPPED', message: 'Bluetooth scanning stopped.' });
+  console.log('Faculty stopped Bluetooth scanning');
+}
+
+function sendToClient(clientId, message) {
+  const ws = connectedClients.get(clientId);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(message));
+  }
+}
+
 
 // ========================================================
 //                  API ENDPOINTS
@@ -267,7 +313,6 @@ app.get('/api/admin/attendance', async (req, res) => {
 app.get('/api/admin/attendance/export', async (req, res) => {
     try {
         const collection = getCollection(COLLECTIONS.ATTENDANCE);
-        // Use req.query to filter the data for export
         const attendance = await collection.find(req.query).toArray();
         
         const data = attendance.map(a => ({
