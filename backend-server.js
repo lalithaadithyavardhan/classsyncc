@@ -1,4 +1,9 @@
-require('dotenv').config(); // <-- This MUST be the first line to load your .env file on Render
+// --- THIS IS THE FIX ---
+// Only load the .env file if we are NOT in a production environment.
+// In production (on Render), the environment variables are set directly.
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
 
 // ClassSync Node.js Back-End (Final Unified Version)
 const express = require('express');
@@ -208,9 +213,6 @@ app.post('/api/login', async (req, res) => {
       return res.json({ success: false, message: 'User not found.' });
     }
 
-    // Using plain text password check to match your demo data.
-    // In a real app, you would hash passwords and use:
-    // const isMatch = await bcrypt.compare(password, user.password);
     const isMatch = (password === user.password); 
 
     if (isMatch && user.role === role) {
@@ -275,8 +277,6 @@ app.get('/api/attendance/student/:roll', async (req, res) => {
 app.post('/api/admin/users', async (req, res) => {
     try {
         const userData = req.body;
-        // For a real app, hash the password before inserting
-        // userData.password = await bcrypt.hash(userData.password, 10);
         const result = await insertUser(userData);
         res.json({ success: true, userId: result.insertedId });
     } catch (err) {
