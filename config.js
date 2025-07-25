@@ -12,7 +12,7 @@ const config = {
     : `http://localhost:${process.env.PORT || 3000}`,
   
   // MongoDB Configuration
-  MONGODB_URI: process.env.MONGODB_URI || "mongodb+srv://adithyasai533:<password>@classsync.61o3pi2.mongodb.net/classsync?retryWrites=true&w=majority",
+  MONGODB_URI: process.env.MONGODB_URI || "mongodb+srv://adithyasai533:S0pUqDmq0Ax9vhaH@classsync.61o3pi2.mongodb.net/?retryWrites=true&w=majority&appName=classsync",
   
   // WebSocket Configuration
   WS_PROTOCOL: process.env.NODE_ENV === 'production' ? 'wss:' : 'ws:',
