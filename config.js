@@ -13,7 +13,10 @@ const config = {
   
   // MongoDB Configuration
   // MongoDB Configuration
-MONGODB_URI: process.env.MONGODB_URI, // <-- REMOVE the "||" and the connection string
+  //MONGO_URI="mongodb+srv://adithyasai533:S0pUqDmq0Ax9vhaH@classsync.61o3pi2.mongodb.net/?retryWrites=true&w=majority&appName=classsync";
+  MONGODB_URI: process.env.MONGODB_URI || "mongodb+srv://adithyasai533:S0pUqDmq0Ax9vhaH@classsync.61o3pi2.mongodb.net/?retryWrites=true&w=majority&appName=classsync",
+
+ //MONGODB_URI: process.env.MONGODB_URI, // <-- REMOVE the "||" and the connection string
   
   // WebSocket Configuration
   WS_PROTOCOL: process.env.NODE_ENV === 'production' ? 'wss:' : 'ws:',
