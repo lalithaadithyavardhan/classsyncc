@@ -1,3 +1,5 @@
+require('dotenv').config(); // Loads the .env file from Render
+
 // ClassSync Node.js Back-End (Final Unified Version)
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -18,7 +20,7 @@ const {
   getCollection,
   COLLECTIONS,
   closeMongoDBConnection,
-  // Import the new functions you will create
+  // Import the new functions
   getUsersByRole,
   insertTimetableEntry,
   findTimetableForStudent,
@@ -95,7 +97,8 @@ wss.on('connection', (ws, req) => {
 });
 
 function handleWebSocketMessage(clientId, data) {
-    // This logic remains the same
+    // This is a placeholder for your existing WebSocket logic which is correct
+    // (handleDeviceDiscovery, handleFacultyScanStart, etc.)
 }
 
 async function handleAttendanceRequest(clientId, data) {
@@ -122,7 +125,6 @@ async function handleAttendanceRequest(clientId, data) {
       return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Attendance already marked for today.' });
     }
     
-    // **FIX:** Save directly to the database
     await insertAttendanceRecord({
       roll,
       date: todayStr(),
@@ -134,7 +136,6 @@ async function handleAttendanceRequest(clientId, data) {
 
     sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: true, message: 'Attendance marked successfully!' });
     
-    // Notify faculty
     if (activeBluetoothSession && activeBluetoothSession.facultyClientId) {
       const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
       if (facultyWs) {
@@ -146,9 +147,6 @@ async function handleAttendanceRequest(clientId, data) {
     sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Database error occurred.' });
   }
 }
-
-// Other WebSocket handlers (handleDeviceDiscovery, etc.) remain the same
-
 
 // ========================================================
 //                  API ENDPOINTS
@@ -164,13 +162,12 @@ app.post('/api/login', async (req, res) => {
       return res.json({ success: false, message: 'User not found.' });
     }
 
-    // **SECURITY FIX:** Use bcrypt to compare passwords
+    // Using plain text password check to match your demo data.
+    // In a real app, you would hash passwords and use:
     // const isMatch = await bcrypt.compare(password, user.password);
-    // For now, using plain text to match your database data.
     const isMatch = (password === user.password); 
 
     if (isMatch && user.role === role) {
-      // Send back only the necessary, non-sensitive user info
       const userPayload = {
         role: user.role,
         roll: user.roll,
@@ -192,7 +189,6 @@ app.post('/api/login', async (req, res) => {
 // --- Timetable Endpoints ---
 app.get('/api/timetable/student', async (req, res) => {
     try {
-        // In a real app, you'd get the student's info from a secure token
         const { branch, year, section } = req.query; 
         const timetable = await findTimetableForStudent(branch, year, section);
         res.json({ success: true, timetable });
@@ -209,7 +205,6 @@ app.get('/api/timetable/faculty/:facultyId', async (req, res) => {
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
-
 
 // --- Attendance Endpoints ---
 app.post('/api/attendance/session', (req, res) => {
@@ -234,7 +229,7 @@ app.get('/api/attendance/student/:roll', async (req, res) => {
 app.post('/api/admin/users', async (req, res) => {
     try {
         const userData = req.body;
-        // **SECURITY:** Hash password before saving
+        // For a real app, hash the password before inserting
         // userData.password = await bcrypt.hash(userData.password, 10);
         const result = await insertUser(userData);
         res.json({ success: true, userId: result.insertedId });
@@ -261,7 +256,6 @@ app.get('/api/admin/attendance', async (req, res) => {
         if (section) filter.section = section;
         if (date) filter.date = date;
         
-        // This query requires you to add branch, year, section to your attendance records
         const collection = getCollection(COLLECTIONS.ATTENDANCE);
         const attendance = await collection.find(filter).toArray();
         res.json({ success: true, attendance });
@@ -272,8 +266,8 @@ app.get('/api/admin/attendance', async (req, res) => {
 
 app.get('/api/admin/attendance/export', async (req, res) => {
     try {
-        // Fetch filtered data (same logic as /api/admin/attendance)
         const collection = getCollection(COLLECTIONS.ATTENDANCE);
+        // Use req.query to filter the data for export
         const attendance = await collection.find(req.query).toArray();
         
         const data = attendance.map(a => ({
@@ -299,7 +293,6 @@ app.get('/api/admin/attendance/export', async (req, res) => {
         res.status(500).json({ success: false, message: 'Server error during export' });
     }
 });
-
 
 // Start server
 server.listen(PORT, () => {
