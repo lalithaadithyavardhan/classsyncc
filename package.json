@@ -16,14 +16,17 @@
   "description": "",
   "dependencies": {
     "@abandonware/noble": "^1.9.2-26",
+    "bcryptjs": "^2.4.3",
     "bluetooth-hci-socket": "^0.5.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
     "mongodb": "^6.17.0",
+    "mongoose": "^7.8.7",
     "react-scripts": "^0.0.0",
     "uuid": "^9.0.1",
-    "ws": "^8.14.2"
+    "ws": "^8.14.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "gh-pages": "^6.3.0"

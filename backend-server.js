@@ -17,6 +17,7 @@ const config = require('./config');
 const app = express();
 const PORT = config.PORT;
 
+
 // Create WebSocket server
 const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -25,9 +26,9 @@ const wss = new WebSocket.Server({ server });
 async function initializeServer() {
   try {
     await connectToMongoDB();
-    console.log('🚀 Server initialized with MongoDB connection');
+    console.log('Server initialized with MongoDB connection');
   } catch (error) {
-    console.error('❌ Failed to initialize MongoDB connection:', error);
+    console.error(' Failed to initialize MongoDB connection:', error);
     process.exit(1);
   }
 }
@@ -47,18 +48,14 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'classsyncc.html'));
 });
 
-// In-memory demo data
-const users = [
-  { role: 'student', roll: 'S101', password: 'pass', deviceId: 'student-device-001' },
-  { role: 'student', roll: 'S102', password: 'pass', deviceId: 'student-device-002' },
-  { role: 'student', roll: 'S103', password: 'pass', deviceId: 'student-device-003' },
-  { role: 'student', roll: 'S104', password: 'pass', deviceId: 'student-device-004' },
-  { role: 'student', roll: 'S105', password: 'pass', deviceId: 'student-device-005' },
-  { role: 'faculty', roll: 'F201', password: 'pass', deviceId: 'faculty-device-001' },
-  { role: 'admin', roll: 'admin', password: 'admin', deviceId: 'admin-device-001' }
-];
+// Import Mongoose and models
+const mongoose = require('mongoose');
+const User = require('./models/User');
+const Timetable = require('./models/Timetable');
+const Attendance = require('./models/Attendance');
+const bcrypt = require('bcryptjs');
+const XLSX = require('xlsx');
 
-let attendanceRecords = [];
 let todaySessionActive = false;
 let activeBluetoothSession = null;
 let connectedClients = new Map(); // WebSocket clients
@@ -270,21 +267,166 @@ function sendToClient(clientId, message) {
   }
 }
 
-// Login endpoint
-app.post('/api/login', (req, res) => {
+// --- LOGIN ENDPOINT (SECURE) ---
+app.post('/api/login', async (req, res) => {
   const { role, roll, password } = req.body;
-  const user = users.find(u => u.role === role && u.roll === roll && u.password === password);
-  if (user) {
-    res.json({ 
-      success: true, 
+  try {
+    // Find user by role and rollNumber/facultyId
+    let user;
+    if (role === 'student') {
+      user = await User.findOne({ role, rollNumber: roll });
+    } else if (role === 'faculty') {
+      user = await User.findOne({ role, facultyId: roll });
+    } else if (role === 'admin') {
+      user = await User.findOne({ role, rollNumber: roll }); // Admins may use rollNumber
+    }
+    if (!user) {
+      return res.json({ success: false, message: 'User not found.' });
+    }
+    // Compare password
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      return res.json({ success: false, message: 'Invalid credentials.' });
+    }
+    res.json({
+      success: true,
       user: {
         role: user.role,
-        roll: user.roll,
-        deviceId: user.deviceId
+        name: user.name,
+        rollNumber: user.rollNumber,
+        facultyId: user.facultyId,
+        branch: user.branch,
+        year: user.year,
+        section: user.section
       }
     });
-  } else {
-    res.json({ success: false, message: 'Invalid credentials.' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
+
+// --- STUDENT TIMETABLE ENDPOINT ---
+app.get('/api/timetable/student/:studentId', async (req, res) => {
+  try {
+    const student = await User.findOne({ role: 'student', rollNumber: req.params.studentId });
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+    const timetable = await Timetable.find({
+      branch: student.branch,
+      year: student.year,
+      section: student.section
+    });
+    res.json({ timetable });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// --- FACULTY TIMETABLE ENDPOINT ---
+app.get('/api/timetable/faculty/:facultyId', async (req, res) => {
+  try {
+    const timetable = await Timetable.find({ facultyId: req.params.facultyId });
+    res.json({ timetable });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// --- ADMIN: CREATE USER ---
+app.post('/api/admin/users', async (req, res) => {
+  try {
+    const { role, name, password, rollNumber, facultyId, branch, year, section } = req.body;
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({
+      role,
+      name,
+      password: hashedPassword,
+      rollNumber: role === 'student' ? rollNumber : undefined,
+      facultyId: role === 'faculty' ? facultyId : undefined,
+      branch: role === 'student' ? branch : undefined,
+      year: role === 'student' ? year : undefined,
+      section: role === 'student' ? section : undefined
+    });
+    await user.save();
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// --- ADMIN: UPDATE USER ---
+app.put('/api/admin/users/:userId', async (req, res) => {
+  try {
+    const update = { ...req.body };
+    if (update.password) {
+      update.password = await bcrypt.hash(update.password, 10);
+    }
+    const user = await User.findByIdAndUpdate(req.params.userId, update, { new: true });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// --- ADMIN: ADD TIMETABLE SLOT ---
+app.post('/api/admin/timetable', async (req, res) => {
+  try {
+    const { day, startTime, endTime, subject, room, branch, year, section, facultyId } = req.body;
+    const slot = new Timetable({ day, startTime, endTime, subject, room, branch, year, section, facultyId });
+    await slot.save();
+    res.json({ success: true, slot });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// --- ADMIN: GET ATTENDANCE WITH FILTERS ---
+app.get('/api/admin/attendance', async (req, res) => {
+  try {
+    const { branch, year, section, date } = req.query;
+    const filter = {};
+    if (branch) filter.branch = branch;
+    if (year) filter.year = Number(year);
+    if (section) filter.section = section;
+    if (date) filter.date = date;
+    // Join with Timetable for classId info if needed
+    const attendance = await Attendance.find(filter).populate('classId');
+    res.json({ attendance });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// --- ADMIN: EXPORT ATTENDANCE TO EXCEL ---
+app.get('/api/admin/attendance/export', async (req, res) => {
+  try {
+    const { branch, year, section, date } = req.query;
+    const filter = {};
+    if (branch) filter.branch = branch;
+    if (year) filter.year = Number(year);
+    if (section) filter.section = section;
+    if (date) filter.date = date;
+    const attendance = await Attendance.find(filter).populate('classId');
+    // Prepare data for Excel
+    const data = attendance.map(a => ({
+      Roll: a.roll,
+      Date: a.date,
+      Status: a.status,
+      Timestamp: a.timestamp,
+      Subject: a.classId ? a.classId.subject : '',
+      Faculty: a.classId ? a.classId.facultyId : '',
+      Room: a.classId ? a.classId.room : ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="attendance.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
