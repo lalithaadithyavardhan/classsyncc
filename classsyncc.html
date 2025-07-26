@@ -105,7 +105,35 @@
     <div id="dashboard-container" class="hidden">
         <div id="overlay" class="overlay"></div>
         <div id="sidebar" class="sidebar w-64 bg-white shadow-lg fixed h-full flex flex-col">
-            <!-- Sidebar content remains the same -->
+            <div class="p-4 flex items-center justify-center gradient-bg">
+                <div class="text-white text-2xl font-bold flex items-center">
+                    <i class="fas fa-calendar-alt mr-3"></i><span>ClassSync</span>
+                </div>
+            </div>
+            <div class="p-4 border-b flex items-center">
+                <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600"><i class="fas fa-user text-xl"></i></div>
+                <div class="ml-3">
+                    <p class="font-semibold" id="userName">User</p>
+                    <p class="text-sm text-gray-500" id="userRole">Role</p>
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto">
+                <nav class="p-2">
+                    <div>
+                        <p class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Main</p>
+                        <a href="#" class="flex items-center px-3 py-3 text-indigo-600 bg-indigo-50 rounded-lg" onclick="showSection('dashboard')"><i class="fas fa-home mr-3"></i><span>Dashboard</span></a>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1" onclick="showSection('timetable')"><i class="fas fa-calendar mr-3"></i><span>Timetable</span></a>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1" onclick="showSection('attendance')"><i class="fas fa-check-circle mr-3"></i><span>Attendance</span></a>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1" onclick="showSection('notifications')"><i class="fas fa-bell mr-3"></i><span>Notifications</span><span class="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full">3</span></a>
+                    </div>
+                    <div class="mt-6">
+                        <p class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Settings</p>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1"><i class="fas fa-cog mr-3"></i><span>Settings</span></a>
+                        <a href="#" class="flex items-center px-3 py-3 text-gray-600 hover:bg-gray-100 rounded-lg mt-1" onclick="logout()"><i class="fas fa-sign-out-alt mr-3"></i><span>Logout</span></a>
+                    </div>
+                </nav>
+            </div>
+            <div class="p-4 text-center text-xs text-gray-500 border-t">ClassSync v2.0.0</div>
         </div>
 
         <!-- Main Content -->
@@ -113,12 +141,23 @@
             <header class="bg-white shadow-sm">
                 <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
                     <div class="flex items-center">
-                        <button id="menuBtn" class="md:hidden p-2 rounded-lg bg-white mr-4 text-indigo-600">
-                            <i class="fas fa-bars text-xl"></i>
-                        </button>
+                        <button id="menuBtn" class="md:hidden p-2 rounded-lg bg-white mr-4 text-indigo-600"><i class="fas fa-bars text-xl"></i></button>
                         <h1 class="text-2xl font-bold text-gray-900" id="pageTitle">Dashboard</h1>
                     </div>
-                    <!-- Header user menu remains the same -->
+                    <div class="flex items-center space-x-4">
+                        <div class="relative"><button class="p-2 rounded-full hover:bg-gray-100"><i class="fas fa-bell text-gray-600"></i><span class="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500"></span></button></div>
+                        <div class="relative">
+                            <button id="userMenuBtn" class="flex items-center space-x-2 focus:outline-none">
+                                <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600"><i class="fas fa-user"></i></div>
+                                <span class="hidden md:inline-block font-medium" id="headerUserName">User</span><i class="fas fa-chevron-down text-xs"></i>
+                            </button>
+                            <div id="userMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
+                                <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Your Profile</a>
+                                <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
+                                <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="logout()">Logout</a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -127,27 +166,14 @@
                 <div id="dashboardSection">
                     <!-- Student Dashboard -->
                     <div id="studentView" class="hidden">
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            <!-- Current Class -->
-                            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md card-hover">
-                                <h3 class="text-lg font-semibold mb-4">Current Class</h3>
-                                <p class="text-gray-600">Data Structures (CS201)</p>
-                            </div>
-                            <!-- Next Class -->
-                            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md card-hover">
-                                <h3 class="text-lg font-semibold mb-4">Next Class</h3>
-                                <p class="text-gray-600">Algorithms (CS202)</p>
-                            </div>
-                            <!-- Quick Actions -->
-                            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md card-hover">
-                                <h3 class="text-lg font-semibold mb-4">Quick Actions</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="bg-white p-6 rounded-xl shadow-md card-hover"><h3 class="font-bold text-lg">Current Class</h3><p class="text-gray-500 mt-2">Data Structures (CS201)</p></div>
+                            <div class="bg-white p-6 rounded-xl shadow-md card-hover"><h3 class="font-bold text-lg">Next Class</h3><p class="text-gray-500 mt-2">Algorithms (CS202)</p></div>
+                            <div class="bg-white p-6 rounded-xl shadow-md card-hover">
+                                <h3 class="font-bold text-lg mb-4">Quick Actions</h3>
                                 <div class="grid grid-cols-2 gap-4">
-                                    <button onclick="showSection('timetable')" class="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 text-blue-600">
-                                        <i class="fas fa-calendar-alt text-xl mb-2"></i><span class="text-sm">Full Schedule</span>
-                                    </button>
-                                    <button onclick="showSection('attendance')" class="flex flex-col items-center justify-center p-4 bg-green-50 rounded-lg hover:bg-green-100 text-green-600">
-                                        <i class="fas fa-check-circle text-xl mb-2"></i><span class="text-sm">Attendance</span>
-                                    </button>
+                                    <button onclick="showSection('timetable')" class="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 text-blue-600"><i class="fas fa-calendar-alt text-xl mb-2"></i><span class="text-sm">Full Schedule</span></button>
+                                    <button onclick="showSection('attendance')" class="flex flex-col items-center justify-center p-4 bg-green-50 rounded-lg hover:bg-green-100 text-green-600"><i class="fas fa-check-circle text-xl mb-2"></i><span class="text-sm">Attendance</span></button>
                                 </div>
                             </div>
                         </div>
@@ -157,14 +183,13 @@
                     <div id="facultyView" class="hidden">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div class="md:col-span-2 bg-white p-6 rounded-xl shadow-md card-hover">
-                                <h3 class="text-lg font-semibold mb-4">Next Class</h3>
+                                <h3 class="font-bold text-lg mb-4">Next Class</h3>
                                 <p>Data Structures (CS201 - Section A)</p>
+                                <p class="text-sm text-gray-500">10:00 AM in Room 302</p>
                             </div>
                             <div class="bg-white p-6 rounded-xl shadow-md card-hover">
-                                <h3 class="text-lg font-semibold mb-4">Quick Actions</h3>
-                                <button onclick="showSection('attendance')" class="w-full p-4 bg-green-50 rounded-lg hover:bg-green-100 text-green-600">
-                                    <i class="fas fa-edit mr-2"></i>Start Attendance
-                                </button>
+                                <h3 class="font-bold text-lg mb-4">Quick Actions</h3>
+                                <button onclick="showSection('attendance')" class="w-full p-4 bg-green-50 rounded-lg hover:bg-green-100 text-green-600">Start Attendance</button>
                             </div>
                         </div>
                     </div>
@@ -173,21 +198,17 @@
                     <div id="adminView" class="hidden">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div class="bg-white p-6 rounded-xl shadow-md card-hover">
-                                <h3 class="text-lg font-semibold mb-4">Quick Stats</h3>
+                                <h3 class="font-bold text-lg mb-4">Quick Stats</h3>
                                 <div class="grid grid-cols-2 gap-4">
                                     <div class="bg-blue-50 p-4 rounded-lg text-center"><p class="text-2xl font-bold text-blue-600">42</p><p class="text-sm text-blue-500">Faculty</p></div>
                                     <div class="bg-green-50 p-4 rounded-lg text-center"><p class="text-2xl font-bold text-green-600">1,250</p><p class="text-sm text-green-500">Students</p></div>
                                 </div>
                             </div>
                             <div class="bg-white p-6 rounded-xl shadow-md card-hover">
-                                <h3 class="text-lg font-semibold mb-4">Admin Actions</h3>
+                                <h3 class="font-bold text-lg mb-4">Admin Actions</h3>
                                 <div class="grid grid-cols-2 gap-4">
-                                    <button onclick="showSection('timetable')" class="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 text-blue-600">
-                                        <i class="fas fa-calendar-plus text-xl mb-2"></i><span class="text-sm">Upload Timetable</span>
-                                    </button>
-                                    <button class="flex flex-col items-center justify-center p-4 bg-green-50 rounded-lg hover:bg-green-100 text-green-600">
-                                        <i class="fas fa-user-plus text-xl mb-2"></i><span class="text-sm">Add User</span>
-                                    </button>
+                                    <button onclick="showSection('timetable')" class="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 text-blue-600"><i class="fas fa-calendar-plus text-xl mb-2"></i><span class="text-sm">Upload Timetable</span></button>
+                                    <button class="flex flex-col items-center justify-center p-4 bg-green-50 rounded-lg hover:bg-green-100 text-green-600"><i class="fas fa-user-plus text-xl mb-2"></i><span class="text-sm">Add User</span></button>
                                 </div>
                             </div>
                         </div>
