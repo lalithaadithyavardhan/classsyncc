@@ -295,7 +295,9 @@ function loadSectionContent(section) {
     if (section === 'attendance') {
         loadAttendanceContent();
     }
-    // Add other sections like timetable later
+    if (section === 'timetable') {
+        loadTimetableContent();
+    }
 }
 
 // Load attendance content based on user role
@@ -388,6 +390,48 @@ function loadAttendanceContent() {
         `;
         document.getElementById('applyFilterBtn').addEventListener('click', fetchAdminAttendance);
         document.getElementById('downloadBtn').addEventListener('click', downloadAttendance);
+    }
+}
+
+// --- TIMETABLE SECTION LOGIC ---
+function loadTimetableContent() {
+    const content = document.getElementById('timetableContent');
+    if (!content) return;
+
+    if (currentRole === 'admin') {
+        // If the user is an admin, show the upload form
+        content.innerHTML = `
+            <div class="border rounded-lg p-6">
+                <h2 class="text-xl font-semibold mb-4">Upload Weekly Timetable</h2>
+                <form id="upload-form" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label for="branch" class="block text-sm font-medium text-gray-700 mb-2">Branch:</label>
+                            <select id="branch" name="branch" required class="w-full px-4 py-3 border border-gray-300 rounded-lg"><option value="CSE">CSE</option><option value="IT">IT</option></select>
+                        </div>
+                        <div>
+                            <label for="year" class="block text-sm font-medium text-gray-700 mb-2">Year:</label>
+                            <select id="year" name="year" required class="w-full px-4 py-3 border border-gray-300 rounded-lg"><option value="1">1</option><option value="2">2</option></select>
+                        </div>
+                        <div>
+                            <label for="section" class="block text-sm font-medium text-gray-700 mb-2">Section:</label>
+                            <select id="section" name="section" required class="w-full px-4 py-3 border border-gray-300 rounded-lg"><option value="A">A</option><option value="B">B</option></select>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="timetableFile" class="block text-sm font-medium text-gray-700 mb-2">Select Excel File:</label>
+                        <input type="file" id="timetableFile" name="timetableFile" required accept=".xlsx, .xls" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    </div>
+                    <button type="submit" class="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium">Upload Timetable</button>
+                </form>
+                <div id="upload-status" class="hidden mt-4 p-3 rounded-lg text-sm"></div>
+            </div>
+        `;
+        // Attach the event listener to the new form
+        document.getElementById('upload-form').addEventListener('submit', handleTimetableUpload);
+    } else {
+        // For students and faculty, show their timetable (future feature)
+        content.innerHTML = `<p>Your weekly timetable will be displayed here.</p>`;
     }
 }
 
@@ -491,6 +535,35 @@ function loadFacultyAttendance() {
 }
 
 // --- NEW FEATURE LOGIC ---
+
+// Handles the timetable upload form submission
+async function handleTimetableUpload(e) {
+    e.preventDefault();
+    const form = document.getElementById('upload-form');
+    const statusDiv = document.getElementById('upload-status');
+    const formData = new FormData(form);
+    
+    statusDiv.className = 'block mt-4 p-3 rounded-lg text-sm bg-yellow-100 text-yellow-700';
+    statusDiv.textContent = 'Uploading...';
+
+    try {
+        const response = await fetch('/api/admin/upload/timetable', {
+            method: 'POST',
+            body: formData,
+        });
+        const result = await response.json();
+        if (result.success) {
+            statusDiv.className = 'block mt-4 p-3 rounded-lg text-sm bg-green-100 text-green-700';
+            statusDiv.textContent = `Success: ${result.message}`;
+            form.reset();
+        } else {
+            throw new Error(result.message || 'Upload failed.');
+        }
+    } catch (error) {
+        statusDiv.className = 'block mt-4 p-3 rounded-lg text-sm bg-red-100 text-red-700';
+        statusDiv.textContent = `Error: ${error.message}`;
+    }
+}
 
 // Logic for Admin Attendance View
 async function fetchAdminAttendance() {

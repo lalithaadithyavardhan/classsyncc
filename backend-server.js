@@ -221,38 +221,30 @@ function sendToClient(clientId, message) {
 //                  API ENDPOINTS
 // ========================================================
 
-// --- User & Auth Endpoints ---
 app.post('/api/login', async (req, res) => {
   try {
     const { role, roll, password } = req.body;
     const user = await findUserByRoll(roll);
 
-    if (!user) {
-      return res.json({ success: false, message: 'User not found.' });
+    if (!user || user.password !== password || user.role !== role) {
+      return res.json({ success: false, message: 'Invalid credentials.' });
     }
 
-    const isMatch = (password === user.password); 
-
-    if (isMatch && user.role === role) {
-      const userPayload = {
-        role: user.role,
-        roll: user.roll,
-        name: user.name,
-        branch: user.branch,
-        year: user.year,
-        section: user.section
-      };
-      res.json({ success: true, user: userPayload });
-    } else {
-      res.json({ success: false, message: 'Invalid credentials.' });
-    }
+    const userPayload = {
+      role: user.role,
+      roll: user.roll,
+      name: user.name,
+      branch: user.branch,
+      year: user.year,
+      section: user.section
+    };
+    res.json({ success: true, user: userPayload });
   } catch (error) {
     console.error('Login API Error:', error);
     res.status(500).json({ success: false, message: 'Server error during login.' });
   }
 });
 
-// --- Timetable Endpoints ---
 app.get('/api/timetable/student', async (req, res) => {
     try {
         const { branch, year, section } = req.query; 
@@ -272,7 +264,6 @@ app.get('/api/timetable/faculty/:facultyId', async (req, res) => {
     }
 });
 
-// --- Attendance Endpoints ---
 app.post('/api/attendance/session', (req, res) => {
   todaySessionActive = true;
   res.json({ success: true });
@@ -291,7 +282,6 @@ app.get('/api/attendance/student/:roll', async (req, res) => {
   res.json({ attendance });
 });
 
-// --- NEW: STUDENT ATTENDANCE SUMMARY ENDPOINT ---
 app.get('/api/student/attendance/summary/:roll', async (req, res) => {
     try {
         const { roll } = req.params;
@@ -308,7 +298,6 @@ app.get('/api/student/attendance/summary/:roll', async (req, res) => {
             year: student.year,
             section: student.section
         }).toArray();
-
         const attendanceRecords = await attendanceCollection.find({ roll: roll }).toArray();
 
         const subjectTotals = {};
@@ -329,7 +318,6 @@ app.get('/api/student/attendance/summary/:roll', async (req, res) => {
         const summary = {};
         let totalClassesOverall = 0;
         let attendedClassesOverall = 0;
-
         for (const subject in subjectTotals) {
             const total = subjectTotals[subject];
             const attended = subjectAttended[subject] || 0;
@@ -341,63 +329,39 @@ app.get('/api/student/attendance/summary/:roll', async (req, res) => {
             totalClassesOverall += total;
             attendedClassesOverall += attended;
         }
-
         const overallPercentage = totalClassesOverall > 0 ? Math.round((attendedClassesOverall / totalClassesOverall) * 100) : 0;
-
         res.json({
             success: true,
             subjectWise: summary,
-            overall: {
-                attended: attendedClassesOverall,
-                total: totalClassesOverall,
-                percentage: overallPercentage
-            }
+            overall: { attended: attendedClassesOverall, total: totalClassesOverall, percentage: overallPercentage }
         });
-
     } catch (error) {
         console.error("Attendance Summary Error:", error);
         res.status(500).json({ success: false, message: 'Server error while calculating summary.' });
     }
 });
 
-
-// --- Admin Endpoints ---
 app.post('/api/admin/users', async (req, res) => {
     try {
-        const userData = req.body;
-        const result = await insertUser(userData);
+        const result = await insertUser(req.body);
         res.json({ success: true, userId: result.insertedId });
     } catch (err) {
         res.status(400).json({ success: false, message: err.message });
     }
 });
 
-app.post('/api/admin/timetable', async (req, res) => {
-    try {
-        const result = await insertTimetableEntry(req.body);
-        res.json({ success: true, entryId: result.insertedId });
-    } catch (err) {
-        res.status(400).json({ success: false, message: err.message });
-    }
-});
-
-// NEW: TIMETABLE UPLOAD ENDPOINT
 app.post('/api/admin/upload/timetable', upload.single('timetableFile'), async (req, res) => {
     try {
         const { branch, year, section } = req.body;
-        
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'No file uploaded.' });
         }
-
         const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
-
         const timetableEntries = [];
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
         for (const row of jsonData) {
             const time = row.Time;
             for (const day of days) {
@@ -405,34 +369,25 @@ app.post('/api/admin/upload/timetable', upload.single('timetableFile'), async (r
                     const parts = row[day].split('\n');
                     if (parts.length >= 3) {
                         timetableEntries.push({
-                            branch,
-                            year: parseInt(year),
-                            section,
-                            day,
-                            startTime: time,
-                            subject: parts[0].trim(),
-                            facultyId: parts[1].trim(),
-                            room: parts[2].trim()
+                            branch, year: parseInt(year), section, day,
+                            startTime: time, subject: parts[0].trim(),
+                            facultyId: parts[1].trim(), room: parts[2].trim()
                         });
                     }
                 }
             }
         }
-
         if (timetableEntries.length > 0) {
             const collection = getCollection(COLLECTIONS.TIMETABLE);
             await collection.deleteMany({ branch, year: parseInt(year), section });
             await collection.insertMany(timetableEntries);
         }
-
         res.json({ success: true, message: `${timetableEntries.length} entries uploaded.` });
-
     } catch (error) {
         console.error('Timetable upload error:', error);
         res.status(500).json({ success: false, message: 'Server error during file processing.' });
     }
 });
-
 
 app.get('/api/admin/attendance', async (req, res) => {
     try {
@@ -453,22 +408,24 @@ app.get('/api/admin/attendance', async (req, res) => {
 
 app.get('/api/admin/attendance/export', async (req, res) => {
     try {
+        const { branch, year, section, date } = req.query;
+        const filter = {};
+        if (branch) filter.branch = branch;
+        if (year) filter.year = Number(year);
+        if (section) filter.section = section;
+        if (date) filter.date = date;
+
         const collection = getCollection(COLLECTIONS.ATTENDANCE);
-        const attendance = await collection.find(req.query).toArray();
+        const attendance = await collection.find(filter).toArray();
         
         const data = attendance.map(a => ({
-            'Roll Number': a.roll,
-            'Date': a.date,
-            'Status': a.status,
-            'Timestamp': a.timestamp,
-            'Device ID': a.deviceId,
-            'Signal (RSSI)': a.rssi
+            'Roll Number': a.roll, 'Date': a.date, 'Status': a.status,
+            'Timestamp': a.timestamp, 'Device ID': a.deviceId, 'Signal (RSSI)': a.rssi,
+            'Branch': a.branch, 'Year': a.year, 'Section': a.section
         }));
-
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
-        
         const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
         
         res.setHeader('Content-Disposition', 'attachment; filename="attendance.xlsx"');
@@ -480,13 +437,11 @@ app.get('/api/admin/attendance/export', async (req, res) => {
     }
 });
 
-// Start server
 server.listen(PORT, () => {
   config.logConfig();
   console.log(`🚀 ClassSync Server running on port ${PORT}`);
 });
 
-// Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down server...');
   await closeMongoDBConnection();
