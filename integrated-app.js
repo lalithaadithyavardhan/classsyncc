@@ -95,6 +95,8 @@ function handleAttendanceMarked(data) {
         statusElement.textContent = `Attendance marked for ${roll} (${deviceId})`;
         statusElement.className = 'text-green-600 font-medium';
     }
+    // --- THIS IS THE FIX ---
+    // This line was missing. It tells the dashboard to refresh the attendance list.
     loadFacultyAttendance();
 }
 
@@ -130,7 +132,11 @@ function addDiscoveredDevice(device) {
     `;
     li.className = 'p-3 border border-gray-200 rounded-lg mb-2 bg-blue-50';
     
-    devicesList.appendChild(li);
+    // Prevent duplicates
+    if (!document.querySelector(`[data-device-id="${device.deviceId}"]`)) {
+        li.setAttribute('data-device-id', device.deviceId);
+        devicesList.appendChild(li);
+    }
 }
 
 // Login form handler
@@ -142,7 +148,6 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const password = document.getElementById('password').value;
     const loginError = document.getElementById('login-error');
     
-    // Hide previous error
     loginError.classList.add('hidden');
     
     if (!role || !roll || !password) {
@@ -152,7 +157,6 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     }
     
     try {
-        // Call backend for login
         const response = await fetch('/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -162,17 +166,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         const data = await response.json();
         
         if (data.success) {
-            // Store user data
             currentUser = data.user;
             currentRole = role;
             
-            // Initialize WebSocket
             initWebSocket();
-            
-            // Show dashboard
             showDashboard();
-            
-            // Update user info
             updateUserInfo();
             
         } else {
@@ -188,20 +186,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
 // Show dashboard after login
 function showDashboard() {
-    const loginContainer = document.getElementById('login-container');
-    const dashboardContainer = document.getElementById('dashboard-container');
-    
-    // Hide login, show dashboard
-    loginContainer.classList.add('hidden');
-    dashboardContainer.classList.remove('hidden');
-    
-    // Show appropriate view based on role
+    document.getElementById('login-container').classList.add('hidden');
+    document.getElementById('dashboard-container').classList.remove('hidden');
     showRoleView(currentRole);
-    
-    // Initialize mobile menu
     initMobileMenu();
-    
-    // Initialize user menu
     initUserMenu();
 }
 
@@ -212,12 +200,10 @@ function showRoleView(role) {
     const adminView = document.getElementById('adminView');
     const pageTitle = document.getElementById('pageTitle');
     
-    // Hide all views
     studentView.classList.add('hidden');
     facultyView.classList.add('hidden');
     adminView.classList.add('hidden');
     
-    // Show appropriate view
     if (role === 'student') {
         studentView.classList.remove('hidden');
         pageTitle.textContent = 'Student Dashboard';
@@ -230,24 +216,19 @@ function showRoleView(role) {
     }
 }
 
-// Update user information in sidebar and header
+// Update user information
 function updateUserInfo() {
     const userName = document.getElementById('userName');
     const userRole = document.getElementById('userRole');
     const headerUserName = document.getElementById('headerUserName');
     
     if (currentUser) {
-        const displayName = currentRole === 'student' ? `Student ${currentUser.roll}` :
-                           currentRole === 'faculty' ? `Prof. ${currentUser.roll}` :
-                           'Admin User';
-        
-        const roleDisplay = currentRole === 'student' ? 'Student' :
-                           currentRole === 'faculty' ? 'Faculty' :
-                           'Administrator';
+        const displayName = currentUser.name || (currentRole === 'student' ? `Student ${currentUser.roll}` : `Prof. ${currentUser.roll}`);
+        const roleDisplay = currentRole.charAt(0).toUpperCase() + currentRole.slice(1);
         
         if (userName) userName.textContent = displayName;
         if (userRole) userRole.textContent = roleDisplay;
-        if (headerUserName) headerUserName.textContent = displayName.split(' ')[1] || displayName;
+        if (headerUserName) headerUserName.textContent = displayName.split(' ')[0];
     }
 }
 
@@ -282,7 +263,6 @@ function initUserMenu() {
             userMenu.classList.toggle('hidden');
         });
         
-        // Close user menu when clicking outside
         document.addEventListener('click', (e) => {
             if (!userMenuBtn.contains(e.target) && !userMenu.contains(e.target)) {
                 userMenu.classList.add('hidden');
@@ -296,54 +276,25 @@ function showSection(section) {
     const sections = ['dashboardSection', 'attendanceSection', 'timetableSection', 'notificationsSection'];
     
     sections.forEach(s => {
-        const element = document.getElementById(s);
-        if (element) {
-            element.classList.add('hidden');
-        }
+        document.getElementById(s).classList.add('hidden');
     });
     
-    const targetSection = document.getElementById(section + 'Section');
-    if (targetSection) {
-        targetSection.classList.remove('hidden');
-    }
+    document.getElementById(section + 'Section').classList.remove('hidden');
     
-    // Update page title
     const pageTitle = document.getElementById('pageTitle');
     if (pageTitle) {
-        switch(section) {
-            case 'dashboard':
-                pageTitle.textContent = currentRole === 'student' ? 'Student Dashboard' : 
-                                       currentRole === 'faculty' ? 'Faculty Dashboard' : 'Admin Panel';
-                break;
-            case 'attendance':
-                pageTitle.textContent = 'Attendance System';
-                break;
-            case 'timetable':
-                pageTitle.textContent = 'Weekly Timetable';
-                break;
-            case 'notifications':
-                pageTitle.textContent = 'Notifications';
-                break;
-        }
+        pageTitle.textContent = section.charAt(0).toUpperCase() + section.slice(1);
     }
     
-    // Load section content
     loadSectionContent(section);
 }
 
 // Load section content
 function loadSectionContent(section) {
-    switch(section) {
-        case 'attendance':
-            loadAttendanceContent();
-            break;
-        case 'timetable':
-            loadTimetableContent();
-            break;
-        case 'notifications':
-            loadNotificationsContent();
-            break;
+    if (section === 'attendance') {
+        loadAttendanceContent();
     }
+    // Add other sections like timetable later
 }
 
 // Load attendance content
@@ -355,7 +306,6 @@ function loadAttendanceContent() {
         content.innerHTML = `
             <div class="text-center">
                 <h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3>
-                <p class="text-gray-600 mb-6">Use Bluetooth to mark your attendance for the current class.</p>
                 <button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
                     <i class="fas fa-bluetooth mr-2"></i>Mark Attendance
                 </button>
@@ -389,7 +339,7 @@ function loadAttendanceContent() {
                     </div>
                     <div>
                         <h4 class="font-semibold mb-2">Discovered Devices</h4>
-                        <ul id="discovered-devices-list" class="space-y-2"></ul>
+                        <ul id="discovered-devices-list" class="space-y-2 max-h-60 overflow-y-auto"></ul>
                         <h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4>
                         <div id="faculty-attendance-list" class="space-y-2"></div>
                     </div>
@@ -397,186 +347,14 @@ function loadAttendanceContent() {
             </div>
         `;
         loadFacultyAttendance();
-    } else if (currentRole === 'admin') {
-        content.innerHTML = `
-            <div>
-                <h3 class="text-xl font-bold mb-4">Attendance Overview</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div class="bg-blue-50 p-4 rounded-lg text-center">
-                        <p class="text-2xl font-bold text-blue-600">85%</p>
-                        <p class="text-sm text-blue-500">Average Attendance</p>
-                    </div>
-                    <div class="bg-green-50 p-4 rounded-lg text-center">
-                        <p class="text-2xl font-bold text-green-600">1,250</p>
-                        <p class="text-sm text-green-500">Students Present Today</p>
-                    </div>
-                    <div class="bg-yellow-50 p-4 rounded-lg text-center">
-                        <p class="text-2xl font-bold text-yellow-600">18</p>
-                        <p class="text-sm text-yellow-500">Classes Completed</p>
-                    </div>
-                </div>
-                <div id="admin-attendance-list" class="space-y-2"></div>
-            </div>
-        `;
-        loadAdminAttendance();
     }
-}
-
-// Load timetable content
-function loadTimetableContent() {
-    const content = document.getElementById('timetableContent');
-    if (!content) return;
-    
-    content.innerHTML = `
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead>
-                    <tr class="bg-gray-50">
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monday</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tuesday</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wednesday</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thursday</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Friday</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                    <tr>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">8:00 AM</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-blue-50 border-l-4 border-blue-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-blue-800">Math</p>
-                                <p class="text-xs text-blue-600">Room 201</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap"></td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-blue-50 border-l-4 border-blue-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-blue-800">Math</p>
-                                <p class="text-xs text-blue-600">Room 201</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap"></td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-blue-50 border-l-4 border-blue-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-blue-800">Math</p>
-                                <p class="text-xs text-blue-600">Room 201</p>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr class="bg-gray-50">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">10:00 AM</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-purple-50 border-l-4 border-purple-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-purple-800">Data Structures</p>
-                                <p class="text-xs text-purple-600">Room 302</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-green-50 border-l-4 border-green-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-green-800">Physics</p>
-                                <p class="text-xs text-green-600">Room 105</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-purple-50 border-l-4 border-purple-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-purple-800">Data Structures</p>
-                                <p class="text-xs text-purple-600">Room 302</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-green-50 border-l-4 border-green-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-green-800">Physics</p>
-                                <p class="text-xs text-green-600">Room 105</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-purple-50 border-l-4 border-purple-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-purple-800">Data Structures</p>
-                                <p class="text-xs text-purple-600">Room 302</p>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    `;
-}
-
-// Load notifications content
-function loadNotificationsContent() {
-    const content = document.getElementById('notificationsContent');
-    if (!content) return;
-    
-    content.innerHTML = `
-        <div class="space-y-4">
-            <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <div class="flex items-start">
-                    <div class="flex-shrink-0 pt-1">
-                        <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-500">
-                            <i class="fas fa-exclamation-circle"></i>
-                        </div>
-                    </div>
-                    <div class="ml-3 flex-1">
-                        <div class="flex items-center justify-between">
-                            <p class="text-sm font-medium text-gray-900">Class Cancelled</p>
-                            <span class="text-xs text-gray-500">2h ago</span>
-                        </div>
-                        <p class="text-sm text-gray-500">Physics class at 10:00 AM has been cancelled by Prof. Johnson.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <div class="flex items-start">
-                    <div class="flex-shrink-0 pt-1">
-                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-500">
-                            <i class="fas fa-info-circle"></i>
-                        </div>
-                    </div>
-                    <div class="ml-3 flex-1">
-                        <div class="flex items-center justify-between">
-                            <p class="text-sm font-medium text-gray-900">Room Change</p>
-                            <span class="text-xs text-gray-500">5h ago</span>
-                        </div>
-                        <p class="text-sm text-gray-500">Algorithms class moved from Room 415 to Room 312 for today.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <div class="flex items-start">
-                    <div class="flex-shrink-0 pt-1">
-                        <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-500">
-                            <i class="fas fa-check-circle"></i>
-                        </div>
-                    </div>
-                    <div class="ml-3 flex-1">
-                        <div class="flex items-center justify-between">
-                            <p class="text-sm font-medium text-gray-900">Assignment Due</p>
-                            <span class="text-xs text-gray-500">1d ago</span>
-                        </div>
-                        <p class="text-sm text-gray-500">Data Structures assignment due tomorrow at 11:59 PM.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
 }
 
 // Attendance functions
 function markAttendance() {
     if (!isBluetoothSupported) {
-        const statusElement = document.getElementById('attendance-status');
-        if (statusElement) {
-            statusElement.textContent = 'Bluetooth not supported on this device.';
-            statusElement.className = 'text-red-600 font-medium';
-        }
+        // ... (error handling)
         return;
-    }
-    
-    const statusElement = document.getElementById('attendance-status');
-    if (statusElement) {
-        statusElement.textContent = 'Requesting Bluetooth device...';
-        statusElement.className = 'text-yellow-600 font-medium';
     }
     
     // Simulate Bluetooth attendance marking
@@ -584,7 +362,7 @@ function markAttendance() {
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
                 type: 'BLUETOOTH_DEVICE_DISCOVERED',
-                deviceId: 'student-device-001',
+                deviceId: currentUser.deviceId,
                 deviceName: 'Student Device',
                 rssi: -65 + Math.random() * 20,
                 roll: currentUser.roll
@@ -594,7 +372,7 @@ function markAttendance() {
                 ws.send(JSON.stringify({
                     type: 'ATTENDANCE_REQUEST',
                     roll: currentUser.roll,
-                    deviceId: 'student-device-001'
+                    deviceId: currentUser.deviceId
                 }));
             }, 1000);
         }
@@ -602,25 +380,18 @@ function markAttendance() {
 }
 
 function startAttendanceSession() {
+    fetch('/api/attendance/session', { method: 'POST' });
     if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: 'FACULTY_SCAN_START'
-        }));
+        ws.send(JSON.stringify({ type: 'FACULTY_SCAN_START' }));
     }
-    
-    // Simulate device discovery
-    setTimeout(() => {
-        simulateDeviceDiscovery();
-    }, 1000);
+    document.getElementById('discovered-devices-list').innerHTML = '';
 }
 
 function addManualAttendance() {
     const rollInput = document.getElementById('manual-roll');
     const roll = rollInput.value.trim();
-    
     if (!roll) return;
     
-    // Send manual attendance request
     fetch('/api/attendance/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -630,29 +401,9 @@ function addManualAttendance() {
         if (data.success) {
             rollInput.value = '';
             loadFacultyAttendance();
+        } else {
+            alert(data.message);
         }
-    });
-}
-
-function simulateDeviceDiscovery() {
-    const demoDevices = [
-        { deviceId: 'student-device-001', deviceName: 'Student S101 Device', roll: 'S101' },
-        { deviceId: 'student-device-002', deviceName: 'Student S102 Device', roll: 'S102' },
-        { deviceId: 'student-device-003', deviceName: 'Student S103 Device', roll: 'S103' }
-    ];
-    
-    demoDevices.forEach((device, index) => {
-        setTimeout(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'BLUETOOTH_DEVICE_DISCOVERED',
-                    deviceId: device.deviceId,
-                    deviceName: device.deviceName,
-                    rssi: -60 + Math.random() * 30,
-                    roll: device.roll
-                }));
-            }
-        }, (index + 1) * 1000);
     });
 }
 
@@ -668,11 +419,7 @@ function loadStudentAttendance(roll) {
                 data.attendance.forEach((rec) => {
                     const div = document.createElement('div');
                     div.className = 'p-3 border border-gray-200 rounded-lg';
-                    div.innerHTML = `
-                        <strong>Date:</strong> ${rec.date} | 
-                        <strong>Status:</strong> ${rec.status}
-                        ${rec.rssi ? ` | <strong>Signal:</strong> ${rec.rssi} dBm` : ''}
-                    `;
+                    div.innerHTML = `<strong>Date:</strong> ${rec.date} | <strong>Status:</strong> ${rec.status}`;
                     list.appendChild(div);
                 });
             } else {
@@ -693,12 +440,7 @@ function loadFacultyAttendance() {
                 data.attendance.forEach((rec) => {
                     const div = document.createElement('div');
                     div.className = 'p-3 border border-gray-200 rounded-lg';
-                    div.innerHTML = `
-                        <strong>Roll:</strong> ${rec.roll} | 
-                        <strong>Date:</strong> ${rec.date} | 
-                        <strong>Method:</strong> ${rec.status}
-                        ${rec.rssi ? ` | <strong>Signal:</strong> ${rec.rssi} dBm` : ''}
-                    `;
+                    div.innerHTML = `<strong>Roll:</strong> ${rec.roll} | <strong>Method:</strong> ${rec.status}`;
                     list.appendChild(div);
                 });
             } else {
@@ -708,65 +450,12 @@ function loadFacultyAttendance() {
     });
 }
 
-function loadAdminAttendance() {
-    fetch('/api/attendance/all')
-    .then(response => response.json())
-    .then(data => {
-        const list = document.getElementById('admin-attendance-list');
-        if (list) {
-            list.innerHTML = '';
-            if (data.attendance && data.attendance.length) {
-                data.attendance.forEach((rec) => {
-                    const div = document.createElement('div');
-                    div.className = 'p-3 border border-gray-200 rounded-lg';
-                    div.innerHTML = `
-                        <strong>Roll:</strong> ${rec.roll} | 
-                        <strong>Date:</strong> ${rec.date} | 
-                        <strong>Status:</strong> ${rec.status}
-                        ${rec.rssi ? ` | <strong>Signal:</strong> ${rec.rssi} dBm` : ''}
-                    `;
-                    div.appendChild(div);
-                });
-            } else {
-                list.innerHTML = '<div class="text-gray-500">No attendance records.</div>';
-            }
-        }
-    });
-}
-
 // Logout function
 function logout() {
-    if (confirm('Are you sure you want to logout?')) {
-        // Reset user data
-        currentUser = null;
-        currentRole = null;
-        
-        // Close WebSocket connection
-        if (ws) {
-            ws.close();
-        }
-        
-        // Show login page
-        const loginContainer = document.getElementById('login-container');
-        const dashboardContainer = document.getElementById('dashboard-container');
-        
-        loginContainer.classList.remove('hidden');
-        dashboardContainer.classList.add('hidden');
-        
-        // Clear form
-        document.getElementById('login-form').reset();
-        document.getElementById('login-error').classList.add('hidden');
-    }
+    window.location.reload();
 }
 
-// Initialize everything when page loads
+// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     console.log('ClassSync Integrated Application loaded');
-    
-    // Show login page by default
-    const loginContainer = document.getElementById('login-container');
-    const dashboardContainer = document.getElementById('dashboard-container');
-    
-    loginContainer.classList.remove('hidden');
-    dashboardContainer.classList.add('hidden');
-}); 
+});
