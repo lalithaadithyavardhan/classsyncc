@@ -12,8 +12,8 @@ const cors = require('cors');
 const path = require('path');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
-const bcrypt = require('bcryptjs');
-const XLSX = require('xlsx');
+const multer = require('multer'); // For handling file uploads
+const XLSX = require('xlsx');     // For reading Excel files
 
 // --- Using your existing, excellent MongoDB config ---
 const { 
@@ -35,6 +35,11 @@ const {
 const config = require('./config');
 const app = express();
 const PORT = config.PORT;
+
+// --- Multer Setup ---
+// This tells multer to store the uploaded file in memory as a buffer
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 // Create WebSocket server
 const server = require('http').createServer(app);
@@ -60,9 +65,14 @@ app.use(cors({
 app.use(bodyParser.json());
 app.use(express.static(__dirname));
 
-// Serve the main integrated application
+// --- Main App & Admin Portal Routes ---
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'classsyncc.html'));
+});
+
+// ADDED: A new route to serve the admin portal page
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin-portal.html'));
 });
 
 
@@ -148,6 +158,11 @@ async function handleAttendanceRequest(clientId, data) {
   }
   
   try {
+    const student = await findUserByRoll(roll);
+    if (!student) {
+        return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Student roll number not found.' });
+    }
+
     const collection = getCollection(COLLECTIONS.ATTENDANCE);
     const already = await collection.findOne({ roll, date: todayStr() });
 
@@ -161,7 +176,10 @@ async function handleAttendanceRequest(clientId, data) {
       status: 'Present (Bluetooth)',
       deviceId,
       rssi: discoveredDevice.rssi,
-      timestamp: new Date()
+      timestamp: new Date(),
+      branch: student.branch,
+      year: student.year,
+      section: student.section
     });
 
     sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: true, message: 'Attendance marked successfully!' });
@@ -273,6 +291,76 @@ app.get('/api/attendance/student/:roll', async (req, res) => {
   res.json({ attendance });
 });
 
+// --- NEW: STUDENT ATTENDANCE SUMMARY ENDPOINT ---
+app.get('/api/student/attendance/summary/:roll', async (req, res) => {
+    try {
+        const { roll } = req.params;
+        const student = await findUserByRoll(roll);
+        if (!student) {
+            return res.status(404).json({ success: false, message: 'Student not found.' });
+        }
+
+        const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
+        const attendanceCollection = getCollection(COLLECTIONS.ATTENDANCE);
+
+        const timetable = await timetableCollection.find({
+            branch: student.branch,
+            year: student.year,
+            section: student.section
+        }).toArray();
+
+        const attendanceRecords = await attendanceCollection.find({ roll: roll }).toArray();
+
+        const subjectTotals = {};
+        timetable.forEach(slot => {
+            subjectTotals[slot.subject] = (subjectTotals[slot.subject] || 0) + 1;
+        });
+
+        const subjectAttended = {};
+        // This logic needs improvement to be more accurate, but works as a demo
+        attendanceRecords.forEach(record => {
+            const dayOfWeek = new Date(record.timestamp).toLocaleString('en-us', { weekday: 'long' });
+            const classOnDay = timetable.find(slot => slot.day === dayOfWeek);
+            if(classOnDay){
+                subjectAttended[classOnDay.subject] = (subjectAttended[classOnDay.subject] || 0) + 1;
+            }
+        });
+        
+        const summary = {};
+        let totalClassesOverall = 0;
+        let attendedClassesOverall = 0;
+
+        for (const subject in subjectTotals) {
+            const total = subjectTotals[subject];
+            const attended = subjectAttended[subject] || 0;
+            summary[subject] = {
+                attended: attended,
+                total: total,
+                percentage: total > 0 ? Math.round((attended / total) * 100) : 0
+            };
+            totalClassesOverall += total;
+            attendedClassesOverall += attended;
+        }
+
+        const overallPercentage = totalClassesOverall > 0 ? Math.round((attendedClassesOverall / totalClassesOverall) * 100) : 0;
+
+        res.json({
+            success: true,
+            subjectWise: summary,
+            overall: {
+                attended: attendedClassesOverall,
+                total: totalClassesOverall,
+                percentage: overallPercentage
+            }
+        });
+
+    } catch (error) {
+        console.error("Attendance Summary Error:", error);
+        res.status(500).json({ success: false, message: 'Server error while calculating summary.' });
+    }
+});
+
+
 // --- Admin Endpoints ---
 app.post('/api/admin/users', async (req, res) => {
     try {
@@ -292,6 +380,59 @@ app.post('/api/admin/timetable', async (req, res) => {
         res.status(400).json({ success: false, message: err.message });
     }
 });
+
+// NEW: TIMETABLE UPLOAD ENDPOINT
+app.post('/api/admin/upload/timetable', upload.single('timetableFile'), async (req, res) => {
+    try {
+        const { branch, year, section } = req.body;
+        
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'No file uploaded.' });
+        }
+
+        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        const timetableEntries = [];
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+        for (const row of jsonData) {
+            const time = row.Time;
+            for (const day of days) {
+                if (row[day]) {
+                    const parts = row[day].split('\n');
+                    if (parts.length >= 3) {
+                        timetableEntries.push({
+                            branch,
+                            year: parseInt(year),
+                            section,
+                            day,
+                            startTime: time,
+                            subject: parts[0].trim(),
+                            facultyId: parts[1].trim(),
+                            room: parts[2].trim()
+                        });
+                    }
+                }
+            }
+        }
+
+        if (timetableEntries.length > 0) {
+            const collection = getCollection(COLLECTIONS.TIMETABLE);
+            await collection.deleteMany({ branch, year: parseInt(year), section });
+            await collection.insertMany(timetableEntries);
+        }
+
+        res.json({ success: true, message: `${timetableEntries.length} entries uploaded.` });
+
+    } catch (error) {
+        console.error('Timetable upload error:', error);
+        res.status(500).json({ success: false, message: 'Server error during file processing.' });
+    }
+});
+
 
 app.get('/api/admin/attendance', async (req, res) => {
     try {
