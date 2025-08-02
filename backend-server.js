@@ -189,8 +189,6 @@ app.get('/', (req, res) => {
 });
 
 
-const bcrypt = require('bcryptjs');
-
 app.post('/api/login', async (req, res) => {
   try {
     const { role, roll, password } = req.body;
