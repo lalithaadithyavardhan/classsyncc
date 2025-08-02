@@ -6,41 +6,38 @@ const config = require('./config');
 const MONGODB_URI = config.MONGODB_URI;
 
 // Database and Collection names
-const DB_NAME = config.classsync;
+const DB_NAME = config.DB_NAME;
 const COLLECTIONS = config.COLLECTIONS;
 
 // MongoDB Client instance
 let client = null;
 let db = null;
 
-
-
-
 // Connect to MongoDB
 async function connectToMongoDB() {
   try {
     if (!client) {
+      // Removed deprecated options for cleaner code
       client = new MongoClient(MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
         maxPoolSize: 10,
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,
       });
       
       await client.connect();
-      console.log(' Connected to MongoDB Atlas successfully!');
+      console.log('✅ Connected to MongoDB Atlas successfully!');
       
       db = client.db(DB_NAME);
-      console.log(`Using database: ${DB_NAME}`);
+      console.log(`✅ Using database: ${DB_NAME}`);
       
       // Create collections if they don't exist
       await createCollections();
     }
     
     return { client, db };
-  } catch (error) {
-    console.error(' MongoDB connection error:', error);
+  } catch (error)
+   {
+    console.error('❌ MongoDB connection error:', error);
     throw error;
   }
 }
@@ -51,14 +48,19 @@ async function createCollections() {
     const collections = await db.listCollections().toArray();
     const collectionNames = collections.map(col => col.name);
     
+    // Add TIMETABLE to the collections to be created
+    if (!COLLECTIONS.TIMETABLE) {
+        COLLECTIONS.TIMETABLE = 'timetables';
+    }
+
     for (const collectionName of Object.values(COLLECTIONS)) {
       if (!collectionNames.includes(collectionName)) {
         await db.createCollection(collectionName);
-        console.log(` Created collection: ${collectionName}`);
+        console.log(`✅ Created collection: ${collectionName}`);
       }
     }
   } catch (error) {
-    console.error('Error creating collections:', error);
+    console.error('❌ Error creating collections:', error);
   }
 }
 
@@ -83,10 +85,10 @@ async function closeMongoDBConnection() {
       await client.close();
       client = null;
       db = null;
-      console.log(' MongoDB connection closed.');
+      console.log('🔌 MongoDB connection closed.');
     }
   } catch (error) {
-    console.error('Error closing MongoDB connection:', error);
+    console.error('❌ Error closing MongoDB connection:', error);
   }
 }
 
@@ -95,35 +97,23 @@ async function testConnection() {
   try {
     const { db } = await connectToMongoDB();
     const result = await db.admin().ping();
-    console.log(' MongoDB ping result:', result);
+    console.log('✅ MongoDB ping result:', result);
     return true;
   } catch (error) {
-    console.error(' MongoDB connection test failed:', error);
+    console.error('❌ MongoDB connection test failed:', error);
     return false;
   }
 }
 
-// Example usage functions
+// --- User Management Functions ---
 async function insertUser(userData) {
   try {
     const collection = getCollection(COLLECTIONS.USERS);
     const result = await collection.insertOne(userData);
-    console.log(' User inserted:', result.insertedId);
+    console.log('👤 User inserted:', result.insertedId);
     return result;
   } catch (error) {
-    console.error('Error inserting user:', error);
-    throw error;
-  }
-}
-
-async function insertAttendanceRecord(attendanceData) {
-  try {
-    const collection = getCollection(COLLECTIONS.ATTENDANCE);
-    const result = await collection.insertOne(attendanceData);
-    console.log(' Attendance record inserted:', result.insertedId);
-    return result;
-  } catch (error) {
-    console.error('Error inserting attendance record:', error);
+    console.error('❌ Error inserting user:', error);
     throw error;
   }
 }
@@ -134,7 +124,33 @@ async function findUserByRoll(roll) {
     const user = await collection.findOne({ roll: roll });
     return user;
   } catch (error) {
-    console.error('Error finding user:', error);
+    console.error('❌ Error finding user:', error);
+    throw error;
+  }
+}
+
+// NEW: Function for Admin Panel to get all students or faculty
+async function getUsersByRole(role) {
+  try {
+    const collection = getCollection(COLLECTIONS.USERS);
+    const users = await collection.find({ role: role }).toArray();
+    return users;
+  } catch (error) {
+    console.error(`❌ Error finding users with role ${role}:`, error);
+    throw error;
+  }
+}
+
+
+// --- Attendance Functions ---
+async function insertAttendanceRecord(attendanceData) {
+  try {
+    const collection = getCollection(COLLECTIONS.ATTENDANCE);
+    const result = await collection.insertOne(attendanceData);
+    console.log('📝 Attendance record inserted:', result.insertedId);
+    return result;
+  } catch (error) {
+    console.error('❌ Error inserting attendance record:', error);
     throw error;
   }
 }
@@ -145,10 +161,50 @@ async function getAttendanceByDate(date) {
     const records = await collection.find({ date: date }).toArray();
     return records;
   } catch (error) {
-    console.error('Error getting attendance records:', error);
+    console.error('❌ Error getting attendance records:', error);
     throw error;
   }
 }
+
+// --- NEW: Timetable Functions ---
+
+// NEW: Function for Admin Panel to add a class to the timetable
+async function insertTimetableEntry(entryData) {
+    try {
+        const collection = getCollection(COLLECTIONS.TIMETABLE);
+        const result = await collection.insertOne(entryData);
+        console.log('🗓️ Timetable entry inserted:', result.insertedId);
+        return result;
+    } catch (error) {
+        console.error('❌ Error inserting timetable entry:', error);
+        throw error;
+    }
+}
+
+// NEW: Function for Student Dashboard to get their schedule
+async function findTimetableForStudent(branch, year, section) {
+    try {
+        const collection = getCollection(COLLECTIONS.TIMETABLE);
+        const timetable = await collection.find({ branch, year, section }).toArray();
+        return timetable;
+    } catch (error) {
+        console.error('❌ Error finding student timetable:', error);
+        throw error;
+    }
+}
+
+// NEW: Function for Faculty Dashboard to get their schedule
+async function findTimetableForFaculty(facultyId) {
+    try {
+        const collection = getCollection(COLLECTIONS.TIMETABLE);
+        const timetable = await collection.find({ facultyId: facultyId }).toArray();
+        return timetable;
+    } catch (error) {
+        console.error('❌ Error finding faculty timetable:', error);
+        throw error;
+    }
+}
+
 
 module.exports = {
   connectToMongoDB,
@@ -157,8 +213,15 @@ module.exports = {
   getCollection,
   testConnection,
   COLLECTIONS,
+  // User functions
   insertUser,
-  insertAttendanceRecord,
   findUserByRoll,
-  getAttendanceByDate
-}; 
+  getUsersByRole, // <-- Added for export
+  // Attendance functions
+  insertAttendanceRecord,
+  getAttendanceByDate,
+  // Timetable functions
+  insertTimetableEntry, // <-- Added for export
+  findTimetableForStudent, // <-- Added for export
+  findTimetableForFaculty, // <-- Added for export
+};

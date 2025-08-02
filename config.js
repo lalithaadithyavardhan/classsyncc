@@ -45,6 +45,7 @@ const config = {
   COLLECTIONS: {
     USERS: 'users',
     ATTENDANCE: 'attendance',
+    TIMETABLE: 'timetables',
     SESSIONS: 'sessions',
     DEVICES: 'devices'
   }

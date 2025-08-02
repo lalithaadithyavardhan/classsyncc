@@ -15,6 +15,10 @@ if (navigator.bluetooth) {
     console.log('Web Bluetooth API is not supported');
 }
 
+// ========================================================
+//          WEBSOCKET SETUP & HANDLERS
+// ========================================================
+
 // Initialize WebSocket connection
 function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -22,10 +26,7 @@ function initWebSocket() {
     
     ws = new WebSocket(wsUrl);
     
-    ws.onopen = () => {
-        console.log('WebSocket connected');
-    };
-    
+    ws.onopen = () => console.log('WebSocket connected');
     ws.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
@@ -34,18 +35,11 @@ function initWebSocket() {
             console.error('WebSocket message error:', error);
         }
     };
-    
-    ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        setTimeout(initWebSocket, 3000);
-    };
-    
-    ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-    };
+    ws.onclose = () => setTimeout(initWebSocket, 3000);
+    ws.onerror = (error) => console.error('WebSocket error:', error);
 }
 
-// Handle WebSocket messages
+// Handle incoming WebSocket messages
 function handleWebSocketMessage(data) {
     switch (data.type) {
         case 'ATTENDANCE_RESPONSE':
@@ -66,14 +60,13 @@ function handleWebSocketMessage(data) {
     }
 }
 
-// Handle attendance response
+// Handle attendance response for students
 function handleAttendanceResponse(data) {
     const statusElement = document.getElementById('attendance-status');
     if (statusElement) {
         if (data.success) {
             statusElement.textContent = data.message;
             statusElement.className = 'text-green-600 font-medium';
-            // Refresh student summary if they are on the attendance page
             if (currentRole === 'student') {
                 loadStudentAttendanceSummary(currentUser.roll);
             }
@@ -84,13 +77,12 @@ function handleAttendanceResponse(data) {
     }
 }
 
-// Handle device found (faculty)
+// Handle device found message for faculty
 function handleDeviceFound(data) {
-    const { device } = data;
-    addDiscoveredDevice(device);
+    addDiscoveredDevice(data.device);
 }
 
-// Handle attendance marked (faculty)
+// Handle attendance marked message for faculty
 function handleAttendanceMarked(data) {
     const { roll, deviceId } = data;
     const statusElement = document.getElementById('bluetooth-status');
@@ -101,7 +93,7 @@ function handleAttendanceMarked(data) {
     loadFacultyAttendance();
 }
 
-// Handle scan started (faculty)
+// Handle scan started/stopped messages for faculty
 function handleScanStarted(data) {
     const statusElement = document.getElementById('bluetooth-status');
     if (statusElement) {
@@ -109,8 +101,6 @@ function handleScanStarted(data) {
         statusElement.className = 'text-green-600 font-medium';
     }
 }
-
-// Handle scan stopped (faculty)
 function handleScanStopped(data) {
     const statusElement = document.getElementById('bluetooth-status');
     if (statusElement) {
@@ -119,30 +109,13 @@ function handleScanStopped(data) {
     }
 }
 
-// Add discovered device to faculty list
-function addDiscoveredDevice(device) {
-    const devicesList = document.getElementById('discovered-devices-list');
-    if (!devicesList) return;
-    
-    const li = document.createElement('li');
-    li.innerHTML = `
-        <strong>${device.deviceName || 'Unknown Device'}</strong><br>
-        ID: ${device.deviceId}<br>
-        Signal: ${device.rssi.toFixed(2)} dBm<br>
-        Roll: ${device.roll || 'Unknown'}
-    `;
-    li.className = 'p-3 border border-gray-200 rounded-lg mb-2 bg-blue-50';
-    
-    if (!document.querySelector(`[data-device-id="${device.deviceId}"]`)) {
-        li.setAttribute('data-device-id', device.deviceId);
-        devicesList.appendChild(li);
-    }
-}
+// ========================================================
+//          INITIALIZATION & CORE APP LOGIC
+// ========================================================
 
 // Login form handler
 document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
     const role = document.getElementById('role').value;
     const roll = document.getElementById('roll').value.trim();
     const password = document.getElementById('password').value;
@@ -195,87 +168,32 @@ function showDashboard() {
 
 // Show role-specific view
 function showRoleView(role) {
-    const studentView = document.getElementById('studentView');
-    const facultyView = document.getElementById('facultyView');
-    const adminView = document.getElementById('adminView');
+    ['studentView', 'facultyView', 'adminView'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    
+    const viewId = `${role}View`;
+    document.getElementById(viewId).classList.remove('hidden');
+    
     const pageTitle = document.getElementById('pageTitle');
+    pageTitle.textContent = `${role.charAt(0).toUpperCase() + role.slice(1)} Dashboard`;
     
-    studentView.classList.add('hidden');
-    facultyView.classList.add('hidden');
-    adminView.classList.add('hidden');
-    
-    if (role === 'student') {
-        studentView.classList.remove('hidden');
-        pageTitle.textContent = 'Student Dashboard';
-    } else if (role === 'faculty') {
-        facultyView.classList.remove('hidden');
-        pageTitle.textContent = 'Faculty Dashboard';
-    } else if (role === 'admin') {
-        adminView.classList.remove('hidden');
-        pageTitle.textContent = 'Admin Panel';
-    }
+    showSection('dashboard');
 }
 
 // Update user information
 function updateUserInfo() {
-    const userName = document.getElementById('userName');
-    const userRole = document.getElementById('userRole');
-    const headerUserName = document.getElementById('headerUserName');
-    
     if (currentUser) {
         const displayName = currentUser.name || (currentRole === 'student' ? `Student ${currentUser.roll}` : `Prof. ${currentUser.roll}`);
         const roleDisplay = currentRole.charAt(0).toUpperCase() + currentRole.slice(1);
         
-        if (userName) userName.textContent = displayName;
-        if (userRole) userRole.textContent = roleDisplay;
-        if (headerUserName) headerUserName.textContent = displayName.split(' ')[0];
-    }
-}
-
-// Mobile menu toggle
-function initMobileMenu() {
-    const menuBtn = document.getElementById('menuBtn');
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('overlay');
-    
-    if (menuBtn) {
-        menuBtn.addEventListener('click', () => {
-            sidebar.classList.toggle('active');
-            overlay.classList.toggle('active');
-        });
-    }
-    
-    if (overlay) {
-        overlay.addEventListener('click', () => {
-            sidebar.classList.remove('active');
-            overlay.classList.remove('active');
-        });
-    }
-}
-
-// User menu toggle
-function initUserMenu() {
-    const userMenuBtn = document.getElementById('userMenuBtn');
-    const userMenu = document.getElementById('userMenu');
-    
-    if (userMenuBtn && userMenu) {
-        userMenuBtn.addEventListener('click', () => {
-            userMenu.classList.toggle('hidden');
-        });
-        
-        document.addEventListener('click', (e) => {
-            if (!userMenuBtn.contains(e.target) && !userMenu.contains(e.target)) {
-                userMenu.classList.add('hidden');
-            }
-        });
+        document.getElementById('userName').textContent = displayName;
+        document.getElementById('userRole').textContent = roleDisplay;
+        document.getElementById('headerUserName').textContent = displayName.split(' ')[0];
     }
 }
 
 // Section navigation
 function showSection(section) {
-    const sections = ['dashboardSection', 'attendanceSection', 'timetableSection', 'notificationsSection'];
-    
-    sections.forEach(s => {
+    ['dashboardSection', 'attendanceSection', 'timetableSection', 'notificationsSection'].forEach(s => {
         document.getElementById(s).classList.add('hidden');
     });
     
@@ -290,10 +208,10 @@ function showSection(section) {
 }
 
 // ========================================================
-//          NEW FEATURE INTEGRATION STARTS HERE
+//          CONTENT LOADING & FEATURE LOGIC
 // ========================================================
 
-// Load section content
+// Main router for loading content into sections
 function loadSectionContent(section) {
     if (section === 'attendance') {
         loadAttendanceContent();
@@ -309,85 +227,13 @@ function loadAttendanceContent() {
     if (!content) return;
     
     if (currentRole === 'student') {
-        content.innerHTML = `
-            <div id="student-attendance-summary" class="mb-8">
-                <div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center">
-                    <h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3>
-                    <p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p>
-                    <p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p>
-                </div>
-                <h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3>
-                <div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <p class="text-gray-500">Loading attendance summary...</p>
-                </div>
-            </div>
-            <hr class="my-8">
-            <div class="text-center">
-                <h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3>
-                <button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
-                    <i class="fas fa-bluetooth mr-2"></i>Mark Attendance
-                </button>
-                <div id="attendance-status" class="mt-4 p-3 rounded-lg"></div>
-            </div>
-        `;
+        content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading attendance summary...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
         loadStudentAttendanceSummary(currentUser.roll);
-
     } else if (currentRole === 'faculty') {
-        content.innerHTML = `
-            <div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <h3 class="text-xl font-bold mb-4">Start Attendance Session</h3>
-                        <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4">
-                            <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
-                        </button>
-                        <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg mb-4"></div>
-                        <div>
-                            <h4 class="font-semibold mb-2">Manual Attendance</h4>
-                            <div class="flex gap-2">
-                                <input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg">
-                                <button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <h4 class="font-semibold mb-2">Discovered Devices</h4>
-                        <ul id="discovered-devices-list" class="space-y-2 max-h-60 overflow-y-auto"></ul>
-                        <h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4>
-                        <div id="faculty-attendance-list" class="space-y-2"></div>
-                    </div>
-                </div>
-            </div>
-        `;
+        content.innerHTML = `<div><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h3 class="text-xl font-bold mb-4">Start Attendance Session</h3><button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4"><i class="fas fa-play mr-2"></i>Start Bluetooth Scanning</button><div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg mb-4"></div><div><h4 class="font-semibold mb-2">Manual Attendance</h4><div class="flex gap-2"><input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg"><button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add</button></div></div></div><div><h4 class="font-semibold mb-2">Discovered Devices</h4><ul id="discovered-devices-list" class="space-y-2 max-h-60 overflow-y-auto"></ul><h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4><div id="faculty-attendance-list" class="space-y-2"></div></div></div></div>`;
         loadFacultyAttendance();
-
     } else if (currentRole === 'admin') {
-        content.innerHTML = `
-            <h3 class="text-xl font-bold mb-4">View Attendance Records</h3>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-                <div>
-                    <label for="branchFilter" class="block text-sm font-medium text-gray-700">Branch:</label>
-                    <select id="branchFilter" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md"><option value="">All</option><option value="CSE">CSE</option><option value="IT">IT</option><option value="ECE">ECE</option><option value="MECH">MECH</option><option value="CIVIL">CIVIL</option></select>
-                </div>
-                <div>
-                    <label for="yearFilter" class="block text-sm font-medium text-gray-700">Year:</label>
-                    <select id="yearFilter" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md"><option value="">All</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
-                </div>
-                <div>
-                    <label for="sectionFilter" class="block text-sm font-medium text-gray-700">Section:</label>
-                    <select id="sectionFilter" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md"><option value="">All</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select>
-                </div>
-                <div>
-                    <label for="dateFilter" class="block text-sm font-medium text-gray-700">Date:</label>
-                    <input type="date" id="dateFilter" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md">
-                </div>
-            </div>
-            <div class="flex justify-between items-center mb-4">
-                <button id="applyFilterBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">View Attendance</button>
-                <button id="downloadBtn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Download as Excel</button>
-            </div>
-            <div class="overflow-x-auto"><table class="min-w-full"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">Roll Number</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">Status</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">Date</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">Timestamp</th></tr></thead><tbody id="admin-attendance-table" class="bg-white"></tbody></table></div>
-        `;
+        content.innerHTML = `<h3 class="text-xl font-bold mb-4">View Attendance Records</h3><div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg"><div><label for="branchFilter" class="block text-sm font-medium text-gray-700">Branch:</label><select id="branchFilter" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md"><option value="">All</option><option value="CSE">CSE</option><option value="IT">IT</option><option value="ECE">ECE</option><option value="MECH">MECH</option><option value="CIVIL">CIVIL</option></select></div><div><label for="yearFilter" class="block text-sm font-medium text-gray-700">Year:</label><select id="yearFilter" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md"><option value="">All</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div><div><label for="sectionFilter" class="block text-sm font-medium text-gray-700">Section:</label><select id="sectionFilter" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md"><option value="">All</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select></div><div><label for="dateFilter" class="block text-sm font-medium text-gray-700">Date:</label><input type="date" id="dateFilter" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md"></div></div><div class="flex justify-between items-center mb-4"><button id="applyFilterBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">View Attendance</button><button id="downloadBtn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Download as Excel</button></div><div class="overflow-x-auto"><table class="min-w-full"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">Roll Number</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">Status</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">Date</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">Timestamp</th></tr></thead><tbody id="admin-attendance-table" class="bg-white"></tbody></table></div>`;
         document.getElementById('applyFilterBtn').addEventListener('click', fetchAdminAttendance);
         document.getElementById('downloadBtn').addEventListener('click', downloadAttendance);
     }
@@ -396,95 +242,148 @@ function loadAttendanceContent() {
 // --- TIMETABLE SECTION LOGIC ---
 function loadTimetableContent() {
     const content = document.getElementById('timetableContent');
-    if (!content) return;
+    content.innerHTML = ''; // Clear previous content
 
     if (currentRole === 'admin') {
-        content.innerHTML = `
-            <div class="border rounded-lg p-6">
-                <h2 class="text-xl font-semibold mb-4">Upload Weekly Timetable</h2>
-                <form id="upload-form" class="space-y-6">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label for="branch" class="block text-sm font-medium text-gray-700 mb-2">Branch:</label>
-                            <select id="branch" name="branch" required class="w-full px-4 py-3 border border-gray-300 rounded-lg"><option value="CSE">CSE</option><option value="IT">IT</option><option value="ECE">ECE</option><option value="MECH">MECH</option><option value="CIVIL">CIVIL</option></select>
-                        </div>
-                        <div>
-                            <label for="year" class="block text-sm font-medium text-gray-700 mb-2">Year:</label>
-                            <select id="year" name="year" required class="w-full px-4 py-3 border border-gray-300 rounded-lg"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
-                        </div>
-                        <div>
-                            <label for="section" class="block text-sm font-medium text-gray-700 mb-2">Section:</label>
-                            <select id="section" name="section" required class="w-full px-4 py-3 border border-gray-300 rounded-lg"><option value="A">A</option><option value="B">B</option><option value="C">C</option></select>
-                        </div>
-                    </div>
-                    <div>
-                        <label for="timetableFile" class="block text-sm font-medium text-gray-700 mb-2">Select Excel File:</label>
-                        <input type="file" id="timetableFile" name="timetableFile" required accept=".xlsx, .xls" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
-                    </div>
-                    <button type="submit" class="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium">Upload Timetable</button>
-                </form>
-                <div id="upload-status" class="hidden mt-4 p-3 rounded-lg text-sm"></div>
-            </div>
-        `;
-        document.getElementById('upload-form').addEventListener('submit', handleTimetableUpload);
+        // NEW: Load the interactive editor for the admin
+        const template = document.getElementById('admin-timetable-editor');
+        const editor = template.content.cloneNode(true);
+        content.appendChild(editor);
+        initAdminTimetableEditor(); // Attach event listeners
     } else if (currentRole === 'student' || currentRole === 'faculty') {
-        content.innerHTML = `
-            <div class="overflow-x-auto">
-                <table class="w-full">
-                    <thead>
-                        <tr class="bg-gray-50">
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monday</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tuesday</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Wednesday</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thursday</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Friday</th>
-                        </tr>
-                    </thead>
-                    <tbody id="timetable-body" class="bg-white divide-y divide-gray-200">
-                        <tr><td colspan="6" class="text-center p-4">Loading timetable...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        `;
-        fetchTimetable();
+        content.innerHTML = `<div class="overflow-x-auto"><table class="w-full"><thead><tr class="bg-gray-50"><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tuesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Wednesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thursday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Friday</th></tr></thead><tbody id="timetable-body" class="bg-white divide-y divide-gray-200"><tr><td colspan="6" class="text-center p-4">Loading timetable...</td></tr></tbody></table></div>`;
+        fetchUserTimetable();
     }
 }
 
-// --- Helper Functions for New & Existing Features ---
+// ========================================================
+//          NEW: ADMIN TIMETABLE EDITOR LOGIC
+// ========================================================
 
-// Handles the timetable upload form submission
-async function handleTimetableUpload(e) {
-    e.preventDefault();
-    const form = document.getElementById('upload-form');
-    const statusDiv = document.getElementById('upload-status');
-    const formData = new FormData(form);
+/**
+ * Initializes the interactive timetable editor for the admin.
+ */
+function initAdminTimetableEditor() {
+    const gridBody = document.getElementById('admin-timetable-grid-body');
+    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const periods = 7; 
+
+    // Generate the empty grid
+    gridBody.innerHTML = '';
+    days.forEach(day => {
+        const row = document.createElement('tr');
+        row.className = "bg-white border-b";
+        row.innerHTML = `<th class="px-2 py-2 font-medium text-gray-900">${day}</th>`;
+        
+        let cellContent = '';
+        for (let i = 1; i <= periods; i++) {
+            cellContent += `<td class="p-1"><input class="interactive-timetable-input" placeholder="Subject" data-day="${day}" data-period="${i}"><input class="interactive-timetable-input" placeholder="Faculty ID" data-day="${day}" data-period="${i}"><input class="interactive-timetable-input" placeholder="Room" data-day="${day}" data-period="${i}"></td>`;
+            if (i === 4) {
+                cellContent += `<td class="bg-gray-100 text-center text-xs font-semibold">LUNCH</td>`;
+            }
+        }
+        row.innerHTML += cellContent;
+        gridBody.appendChild(row);
+    });
+
+    document.getElementById('admin-view-timetable-btn').addEventListener('click', handleAdminViewTimetable);
+    document.getElementById('admin-save-timetable-btn').addEventListener('click', handleAdminSaveTimetable);
+}
+
+/**
+ * Handles the "View" button click. Fetches timetable data and populates the grid.
+ */
+async function handleAdminViewTimetable() {
+    const branch = document.getElementById('admin-branch-select').value;
+    const year = document.getElementById('admin-year-select').value;
+    const section = document.getElementById('admin-section-select').value;
     
-    statusDiv.className = 'block mt-4 p-3 rounded-lg text-sm bg-yellow-100 text-yellow-700';
-    statusDiv.textContent = 'Uploading...';
+    document.querySelectorAll('.interactive-timetable-input').forEach(input => input.value = '');
 
     try {
-        const response = await fetch('/api/admin/upload/timetable', { method: 'POST', body: formData });
-        const result = await response.json();
-        if (result.success) {
-            statusDiv.className = 'block mt-4 p-3 rounded-lg text-sm bg-green-100 text-green-700';
-            statusDiv.textContent = `Success: ${result.message}`;
-            form.reset();
-        } else { throw new Error(result.message); }
+        const response = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}`);
+        const data = await response.json();
+
+        if (data.success && data.timetable) {
+            const periodMap = { '9:30': 1, '10:20': 2, '11:10': 3, '12:00': 4, '1:50': 5, '2:40': 6, '3:30': 7 };
+            data.timetable.forEach(slot => {
+                const period = periodMap[slot.startTime];
+                if (period) {
+                    const sel = (p, placeholder) => `input[data-day="${slot.day.toUpperCase()}"][data-period="${p}"][placeholder="${placeholder}"]`;
+                    document.querySelector(sel(period, "Subject")).value = slot.subject;
+                    document.querySelector(sel(period, "Faculty ID")).value = slot.facultyId;
+                    document.querySelector(sel(period, "Room")).value = slot.room;
+                }
+            });
+            alert('Timetable loaded!');
+        } else {
+            alert('No timetable found for this selection.');
+        }
     } catch (error) {
-        statusDiv.className = 'block mt-4 p-3 rounded-lg text-sm bg-red-100 text-red-700';
-        statusDiv.textContent = `Error: ${error.message}`;
+        console.error('Failed to fetch timetable:', error);
+        alert('Error loading timetable.');
     }
 }
 
+/**
+ * Handles the "Save" button click. Collects all data and sends it to the backend.
+ */
+async function handleAdminSaveTimetable() {
+    if (!confirm('Are you sure you want to overwrite this timetable?')) return;
+
+    const branch = document.getElementById('admin-branch-select').value;
+    const year = document.getElementById('admin-year-select').value;
+    const section = document.getElementById('admin-section-select').value;
+
+    const timetableData = [];
+    const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '1:50', 6: '2:40', 7: '3:30' };
+
+    document.querySelectorAll('#admin-timetable-grid-body tr').forEach(row => {
+        const day = row.querySelector('th').textContent;
+        for (let period = 1; period <= 7; period++) {
+            const sel = (p, placeholder) => `input[data-day="${day}"][data-period="${p}"][placeholder="${placeholder}"]`;
+            const subject = row.querySelector(sel(period, "Subject"))?.value.trim();
+            if (subject) {
+                timetableData.push({
+                    day: day.charAt(0).toUpperCase() + day.slice(1).toLowerCase(),
+                    startTime: timeMap[period],
+                    subject,
+                    facultyId: row.querySelector(sel(period, "Faculty ID")).value.trim(),
+                    room: row.querySelector(sel(period, "Room")).value.trim()
+                });
+            }
+        }
+    });
+
+    try {
+        const response = await fetch('/api/admin/timetable/bulk-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch, year, section, timetableEntries: timetableData })
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert('Timetable saved successfully!');
+        } else {
+            throw new Error(result.message || 'Failed to save.');
+        }
+    } catch (error) {
+        console.error('Failed to save timetable:', error);
+        alert(`Error saving timetable: ${error.message}`);
+    }
+}
+
+// ========================================================
+//          EXISTING HELPER FUNCTIONS
+// ========================================================
+
 // Fetches and displays timetable for students and faculty
-async function fetchTimetable() {
+async function fetchUserTimetable() {
     if (!currentUser) return;
     let url = '';
     if (currentRole === 'student') {
         const { branch, year, section } = currentUser;
-        const query = new URLSearchParams({ branch, year, section }).toString();
-        url = `/api/timetable/student?${query}`;
+        url = `/api/timetable/student?branch=${branch}&year=${year}&section=${section}`;
     } else if (currentRole === 'faculty') {
         url = `/api/timetable/faculty/${currentUser.roll}`;
     }
@@ -506,19 +405,13 @@ async function fetchTimetable() {
             for (const time in groupedByTime) {
                 const row = tableBody.insertRow();
                 row.innerHTML = `<td class="px-6 py-4 font-medium">${time}</td>`;
-                const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                 days.forEach(day => {
                     const cell = row.insertCell();
                     cell.className = 'px-6 py-4';
                     const entry = groupedByTime[time][day];
                     if (entry) {
-                        cell.innerHTML = `
-                            <div class="timetable-cell bg-indigo-50 border-l-4 border-indigo-500 p-2 rounded">
-                                <p class="font-semibold text-indigo-800">${entry.subject}</p>
-                                <p class="text-xs text-gray-600">${entry.room}</p>
-                                ${currentRole === 'student' ? `<p class="text-xs text-gray-500">${entry.facultyId}</p>` : ''}
-                            </div>
-                        `;
+                        cell.innerHTML = `<div class="timetable-cell bg-indigo-50 border-l-4 border-indigo-500 p-2 rounded"><p class="font-semibold text-indigo-800">${entry.subject}</p><p class="text-xs text-gray-600">${entry.room}</p>${currentRole === 'student' ? `<p class="text-xs text-gray-500">${entry.facultyId}</p>` : ''}</div>`;
                     }
                 });
             }
@@ -530,34 +423,23 @@ async function fetchTimetable() {
     }
 }
 
-// Your existing functions for Bluetooth attendance
+// Student marks attendance
 function markAttendance() {
     if (!isBluetoothSupported) {
         alert('Bluetooth not supported on this device.');
         return;
     }
-    
     setTimeout(() => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'BLUETOOTH_DEVICE_DISCOVERED',
-                deviceId: currentUser.deviceId,
-                deviceName: 'Student Device',
-                rssi: -65 + Math.random() * 20,
-                roll: currentUser.roll
-            }));
-            
+            ws.send(JSON.stringify({ type: 'BLUETOOTH_DEVICE_DISCOVERED', deviceId: currentUser.deviceId, deviceName: 'Student Device', rssi: -65 + Math.random() * 20, roll: currentUser.roll }));
             setTimeout(() => {
-                ws.send(JSON.stringify({
-                    type: 'ATTENDANCE_REQUEST',
-                    roll: currentUser.roll,
-                    deviceId: currentUser.deviceId
-                }));
+                ws.send(JSON.stringify({ type: 'ATTENDANCE_REQUEST', roll: currentUser.roll, deviceId: currentUser.deviceId }));
             }, 1000);
         }
     }, 2000);
 }
 
+// Faculty starts attendance session
 function startAttendanceSession() {
     fetch('/api/attendance/session', { method: 'POST' });
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -566,17 +448,16 @@ function startAttendanceSession() {
     document.getElementById('discovered-devices-list').innerHTML = '';
 }
 
+// Faculty adds manual attendance
 function addManualAttendance() {
     const rollInput = document.getElementById('manual-roll');
     const roll = rollInput.value.trim();
     if (!roll) return;
-    
     fetch('/api/attendance/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roll })
-    }).then(response => response.json())
-    .then(data => {
+    }).then(res => res.json()).then(data => {
         if (data.success) {
             rollInput.value = '';
             loadFacultyAttendance();
@@ -586,15 +467,9 @@ function addManualAttendance() {
     });
 }
 
-// Data Loading Functions
-function loadStudentAttendance(roll) {
-    // This function can be removed if not used elsewhere, as the summary is now the main view
-}
-
+// Load today's attendance for faculty view
 function loadFacultyAttendance() {
-    fetch('/api/attendance/today')
-    .then(response => response.json())
-    .then(data => {
+    fetch('/api/attendance/today').then(res => res.json()).then(data => {
         const list = document.getElementById('faculty-attendance-list');
         if (list) {
             list.innerHTML = '';
@@ -612,7 +487,7 @@ function loadFacultyAttendance() {
     });
 }
 
-// Admin Attendance Logic
+// Admin fetches attendance with filters
 async function fetchAdminAttendance() {
     const branch = document.getElementById('branchFilter').value;
     const year = document.getElementById('yearFilter').value;
@@ -639,6 +514,7 @@ async function fetchAdminAttendance() {
     }
 }
 
+// Admin downloads attendance as Excel
 function downloadAttendance() {
     const branch = document.getElementById('branchFilter').value;
     const year = document.getElementById('yearFilter').value;
@@ -648,7 +524,7 @@ function downloadAttendance() {
     window.open(`/api/admin/attendance/export?${query}`, '_blank');
 }
 
-// Student Percentage Summary Logic
+// Load attendance summary for students
 async function loadStudentAttendanceSummary(roll) {
     try {
         const response = await fetch(`/api/student/attendance/summary/${roll}`);
@@ -659,7 +535,7 @@ async function loadStudentAttendanceSummary(roll) {
             const subjectListDiv = document.getElementById('subject-wise-list');
             subjectListDiv.innerHTML = '';
             if (Object.keys(data.subjectWise).length === 0) {
-                subjectListDiv.innerHTML = `<p class="text-gray-500">No timetable data found to calculate percentages.</p>`;
+                subjectListDiv.innerHTML = `<p class="text-gray-500">No timetable data for percentage calculation.</p>`;
                 return;
             }
             for (const subject in data.subjectWise) {
@@ -675,12 +551,59 @@ async function loadStudentAttendanceSummary(roll) {
     }
 }
 
-// Logout function
+// ========================================================
+//          UI UTILITY FUNCTIONS
+// ========================================================
+
+// Add discovered device to faculty list
+function addDiscoveredDevice(device) {
+    const devicesList = document.getElementById('discovered-devices-list');
+    if (!devicesList) return;
+    const li = document.createElement('li');
+    li.innerHTML = `<strong>${device.deviceName || 'Unknown'}</strong><br>ID: ${device.deviceId}<br>Signal: ${device.rssi.toFixed(2)} dBm<br>Roll: ${device.roll || 'Unknown'}`;
+    li.className = 'p-3 border border-gray-200 rounded-lg mb-2 bg-blue-50';
+    if (!document.querySelector(`[data-device-id="${device.deviceId}"]`)) {
+        li.setAttribute('data-device-id', device.deviceId);
+        devicesList.appendChild(li);
+    }
+}
+
+function initMobileMenu() {
+    const menuBtn = document.getElementById('menuBtn');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('overlay');
+    if (menuBtn) {
+        menuBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        });
+    }
+    if (overlay) {
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+        });
+    }
+}
+
+function initUserMenu() {
+    const userMenuBtn = document.getElementById('userMenuBtn');
+    const userMenu = document.getElementById('userMenu');
+    if (userMenuBtn && userMenu) {
+        userMenuBtn.addEventListener('click', () => userMenu.classList.toggle('hidden'));
+        document.addEventListener('click', (e) => {
+            if (!userMenuBtn.contains(e.target) && !userMenu.contains(e.target)) {
+                userMenu.classList.add('hidden');
+            }
+        });
+    }
+}
+
 function logout() {
     window.location.reload();
 }
 
-// Initialize
+// Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     console.log('ClassSync Integrated Application loaded');
 });
