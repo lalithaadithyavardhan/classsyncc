@@ -188,29 +188,33 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'classsyncc.html'));
 });
 
-// --- Authentication ---
+
+const bcrypt = require('bcryptjs');
+
 app.post('/api/login', async (req, res) => {
   try {
     const { role, roll, password } = req.body;
-    const usersCollection = getCollection(COLLECTIONS.USERS);
-    const user = await usersCollection.findOne({ roll, role });
+    const usersCollection = getCollection(COLLECTIONS.USERS); // Use getCollection
+    const user = await usersCollection.findOne({ roll, role }); // Find by roll and role
 
     if (!user) {
       return res.json({ success: false, message: 'Invalid credentials.' });
     }
 
-    // IMPORTANT: Compare hashed password
+    // THIS IS THE FIX: Use bcrypt.compare to check the password
     const isMatch = await bcrypt.compare(password, user.password);
+
     if (!isMatch) {
-        return res.json({ success: false, message: 'Invalid credentials.' });
+      return res.json({ success: false, message: 'Invalid credentials.' });
     }
 
-    // Do not send password back to client
+    // Don't send the password back to the client
     const { password: _, ...userPayload } = user;
     res.json({ success: true, user: userPayload });
+
   } catch (error) {
     console.error('Login API Error:', error);
-    res.status(500).json({ success: false, message: 'Server error.' });
+    res.status(500).json({ success: false, message: 'Server error during login.' });
   }
 });
 
