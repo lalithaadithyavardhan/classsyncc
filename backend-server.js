@@ -1,6 +1,5 @@
 // --- THIS IS THE FIX ---
 // Only load the .env file if we are NOT in a production environment.
-// In production (on Render), the environment variables are set directly.
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
@@ -17,8 +16,8 @@ const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const XLSX = require('xlsx');
-const bcrypt = require('bcryptjs'); // For password hashing
-const { ObjectId } = require('mongodb'); // To handle MongoDB IDs
+// const bcrypt = require('bcryptjs'); // Reverted to plaintext, so bcrypt is not needed
+const { ObjectId } = require('mongodb');
 
 // ========================================================
 //                  IMPORTS & CONFIG
@@ -41,10 +40,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // Middleware
-app.use(cors({
-  origin: config.CORS_ORIGIN,
-  credentials: true
-}));
+app.use(cors({ origin: config.CORS_ORIGIN, credentials: true }));
 app.use(bodyParser.json());
 app.use(express.static(__dirname));
 
@@ -178,7 +174,6 @@ function sendToClient(clientId, message) {
   }
 }
 
-
 // ========================================================
 //                  API ENDPOINTS
 // ========================================================
@@ -188,31 +183,23 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'classsyncc.html'));
 });
 
-
+// --- Authentication (REVERTED TO PLAINTEXT) ---
 app.post('/api/login', async (req, res) => {
   try {
     const { role, roll, password } = req.body;
-    const usersCollection = getCollection(COLLECTIONS.USERS); // Use getCollection
-    const user = await usersCollection.findOne({ roll, role }); // Find by roll and role
+    const usersCollection = getCollection(COLLECTIONS.USERS);
+    const user = await usersCollection.findOne({ roll, role });
 
-    if (!user) {
+    // REVERTED: Simple password comparison
+    if (!user || user.password !== password) {
       return res.json({ success: false, message: 'Invalid credentials.' });
     }
 
-    // THIS IS THE FIX: Use bcrypt.compare to check the password
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.json({ success: false, message: 'Invalid credentials.' });
-    }
-
-    // Don't send the password back to the client
     const { password: _, ...userPayload } = user;
     res.json({ success: true, user: userPayload });
-
   } catch (error) {
     console.error('Login API Error:', error);
-    res.status(500).json({ success: false, message: 'Server error during login.' });
+    res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
 
@@ -240,7 +227,7 @@ app.get('/api/timetable/faculty/:facultyId', async (req, res) => {
 
 // --- Attendance Endpoints ---
 app.post('/api/attendance/session', (req, res) => {
-  activeBluetoothSession = { startTime: Date.now() }; // Simplified for HTTP, WebSocket handles client ID
+  activeBluetoothSession = { startTime: Date.now() };
   res.json({ success: true, message: "Attendance session started." });
 });
 
@@ -272,10 +259,176 @@ app.get('/api/attendance/today', async (req, res) => {
 });
 
 app.get('/api/student/attendance/summary/:roll', async (req, res) => {
-    // This existing endpoint for student summary remains unchanged.
-    // ... (Your existing logic for this endpoint)
-    res.json({ success: true, message: "Summary data placeholder."}); // Placeholder for brevity
+    try {
+        const { roll } = req.params;
+        const usersCollection = getCollection(COLLECTIONS.USERS);
+        const student = await usersCollection.findOne({ roll });
+        if (!student) {
+            return res.status(404).json({ success: false, message: 'Student not found.' });
+        }
+
+        const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
+        const attendanceCollection = getCollection(COLLECTIONS.ATTENDANCE);
+
+        const timetable = await timetableCollection.find({
+            branch: student.branch,
+            year: student.year,
+            section: student.section
+        }).toArray();
+        const attendanceRecords = await attendanceCollection.find({ roll: roll }).toArray();
+
+        const subjectTotals = {};
+        timetable.forEach(slot => {
+            subjectTotals[slot.subject] = (subjectTotals[slot.subject] || 0) + 1;
+        });
+
+        const subjectAttended = {};
+        attendanceRecords.forEach(record => {
+            const dayOfWeek = new Date(record.timestamp).toLocaleString('en-us', { weekday: 'long' });
+            const classOnDay = timetable.find(slot => slot.day === dayOfWeek);
+            if(classOnDay){
+                subjectAttended[classOnDay.subject] = (subjectAttended[classOnDay.subject] || 0) + 1;
+            }
+        });
+        
+        const summary = {};
+        let totalClassesOverall = 0;
+        let attendedClassesOverall = 0;
+        for (const subject in subjectTotals) {
+            const total = subjectTotals[subject];
+            const attended = subjectAttended[subject] || 0;
+            summary[subject] = {
+                attended: attended,
+                total: total,
+                percentage: total > 0 ? Math.round((attended / total) * 100) : 0
+            };
+            totalClassesOverall += total;
+            attendedClassesOverall += attended;
+        }
+        const overallPercentage = totalClassesOverall > 0 ? Math.round((attendedClassesOverall / totalClassesOverall) * 100) : 0;
+        res.json({
+            success: true,
+            subjectWise: summary,
+            overall: { attended: attendedClassesOverall, total: totalClassesOverall, percentage: overallPercentage }
+        });
+    } catch (error) {
+        console.error("Attendance Summary Error:", error);
+        res.status(500).json({ success: false, message: 'Server error while calculating summary.' });
+    }
 });
+
+// ========================================================
+//          ADMIN FEATURES - API ENDPOINTS
+// ========================================================
+
+// --- User Management (CRUD with Plaintext Passwords) ---
+
+app.get('/api/admin/users', async (req, res) => {
+    try {
+        const usersCollection = getCollection(COLLECTIONS.USERS);
+        const users = await usersCollection.find({}).toArray();
+        res.json({ success: true, users });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to fetch users.' });
+    }
+});
+
+app.post('/api/admin/users', async (req, res) => {
+    try {
+        const { name, email, role, department, roll, password } = req.body;
+        if (!name || !role || !roll || !password) {
+            return res.status(400).json({ success: false, message: 'Missing required fields.' });
+        }
+        const usersCollection = getCollection(COLLECTIONS.USERS);
+        
+        const existingUser = await usersCollection.findOne({ roll });
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: 'User with this ID already exists.' });
+        }
+
+        // REVERTED: Save password directly as plaintext
+        const result = await usersCollection.insertOne({
+            name, email, role, department, roll, password: password, createdAt: new Date()
+        });
+        res.status(201).json({ success: true, userId: result.insertedId });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to create user.' });
+    }
+});
+
+app.put('/api/admin/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, email, role, department, roll, password } = req.body;
+        const usersCollection = getCollection(COLLECTIONS.USERS);
+        
+        const updateData = { name, email, role, department, roll };
+
+        // REVERTED: If a new password is provided, save it as plaintext
+        if (password) {
+            updateData.password = password;
+        }
+
+        const result = await usersCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: updateData }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ success: false, message: 'User not found.' });
+        }
+        res.json({ success: true, message: 'User updated successfully.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to update user.' });
+    }
+});
+
+app.delete('/api/admin/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const usersCollection = getCollection(COLLECTIONS.USERS);
+        const result = await usersCollection.deleteOne({ _id: new ObjectId(id) });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ success: false, message: 'User not found.' });
+        }
+        res.json({ success: true, message: 'User deleted successfully.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to delete user.' });
+    }
+});
+
+// --- Interactive Timetable Editor ---
+
+app.post('/api/admin/timetable/bulk-update', async (req, res) => {
+    try {
+        const { branch, year, section, timetableEntries } = req.body;
+        const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
+
+        await timetableCollection.deleteMany({
+            branch,
+            year: parseInt(year),
+            section
+        });
+
+        if (timetableEntries && timetableEntries.length > 0) {
+            const entriesToInsert = timetableEntries.map(entry => ({
+                ...entry,
+                branch,
+                year: parseInt(year),
+                section
+            }));
+            await timetableCollection.insertMany(entriesToInsert);
+        }
+
+        res.json({ success: true, message: `Timetable for ${branch} ${year}-${section} updated successfully.` });
+    } catch (error) {
+        console.error("Timetable bulk update error:", error);
+        res.status(500).json({ success: false, message: 'Server error during timetable update.' });
+    }
+});
+
+// --- Attendance Reporting ---
 
 app.get('/api/admin/attendance/export', async (req, res) => {
     try {
@@ -305,126 +458,6 @@ app.get('/api/admin/attendance/export', async (req, res) => {
     } catch (err) {
         console.error("Export Error:", err);
         res.status(500).json({ success: false, message: 'Server error during export' });
-    }
-});
-
-
-// ========================================================
-//          NEW ADMIN FEATURES - API ENDPOINTS
-// ========================================================
-
-// --- User Management (CRUD) ---
-
-// GET all users (for admin panel)
-app.get('/api/admin/users', async (req, res) => {
-    try {
-        const usersCollection = getCollection(COLLECTIONS.USERS);
-        const users = await usersCollection.find({}).toArray();
-        res.json({ success: true, users });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to fetch users.' });
-    }
-});
-
-// POST a new user
-app.post('/api/admin/users', async (req, res) => {
-    try {
-        const { name, email, role, department, roll, password } = req.body;
-        if (!name || !role || !roll || !password) {
-            return res.status(400).json({ success: false, message: 'Missing required fields.' });
-        }
-        const usersCollection = getCollection(COLLECTIONS.USERS);
-        
-        const existingUser = await usersCollection.findOne({ roll });
-        if (existingUser) {
-            return res.status(400).json({ success: false, message: 'User with this ID already exists.' });
-        }
-
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        const result = await usersCollection.insertOne({
-            name, email, role, department, roll, password: hashedPassword, createdAt: new Date()
-        });
-        res.status(201).json({ success: true, userId: result.insertedId });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to create user.' });
-    }
-});
-
-// PUT (update) an existing user
-app.put('/api/admin/users/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, email, role, department, roll, password } = req.body;
-        const usersCollection = getCollection(COLLECTIONS.USERS);
-        
-        const updateData = { name, email, role, department, roll };
-
-        if (password) {
-            const salt = await bcrypt.genSalt(10);
-            updateData.password = await bcrypt.hash(password, salt);
-        }
-
-        const result = await usersCollection.updateOne(
-            { _id: new ObjectId(id) },
-            { $set: updateData }
-        );
-
-        if (result.matchedCount === 0) {
-            return res.status(404).json({ success: false, message: 'User not found.' });
-        }
-        res.json({ success: true, message: 'User updated successfully.' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to update user.' });
-    }
-});
-
-// DELETE a user
-app.delete('/api/admin/users/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const usersCollection = getCollection(COLLECTIONS.USERS);
-        const result = await usersCollection.deleteOne({ _id: new ObjectId(id) });
-
-        if (result.deletedCount === 0) {
-            return res.status(404).json({ success: false, message: 'User not found.' });
-        }
-        res.json({ success: true, message: 'User deleted successfully.' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to delete user.' });
-    }
-});
-
-
-// --- Interactive Timetable Editor ---
-
-// POST to bulk update a timetable
-app.post('/api/admin/timetable/bulk-update', async (req, res) => {
-    try {
-        const { branch, year, section, timetableEntries } = req.body;
-        const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
-
-        await timetableCollection.deleteMany({
-            branch,
-            year: parseInt(year),
-            section
-        });
-
-        if (timetableEntries && timetableEntries.length > 0) {
-            const entriesToInsert = timetableEntries.map(entry => ({
-                ...entry,
-                branch,
-                year: parseInt(year),
-                section
-            }));
-            await timetableCollection.insertMany(entriesToInsert);
-        }
-
-        res.json({ success: true, message: `Timetable for ${branch} ${year}-${section} updated successfully.` });
-    } catch (error) {
-        console.error("Timetable bulk update error:", error);
-        res.status(500).json({ success: false, message: 'Server error during timetable update.' });
     }
 });
 
