@@ -1,4 +1,5 @@
-// --- THIS IS THE FIX ---
+// ClassSync Backend Server - FINAL & COMPLETE VERSION
+
 // Only load the .env file if we are NOT in a production environment.
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
@@ -16,7 +17,6 @@ const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const XLSX = require('xlsx');
-// const bcrypt = require('bcryptjs'); // Reverted to plaintext, so bcrypt is not needed
 const { ObjectId } = require('mongodb');
 
 // ========================================================
@@ -52,7 +52,8 @@ const upload = multer({ storage: storage });
 //                  STATE MANAGEMENT
 // ========================================================
 let activeBluetoothSession = null;
-let connectedClients = new Map();
+// REVISED: Storing client connections with user data for targeted messaging
+let connectedClients = new Map(); // Stores { clientId, ws, user }
 let discoveredDevices = new Map();
 
 // Helper
@@ -65,7 +66,8 @@ function todayStr() {
 // ========================================================
 wss.on('connection', (ws) => {
   const clientId = uuidv4();
-  connectedClients.set(clientId, ws);
+  // Store the connection object without user details initially
+  connectedClients.set(clientId, { ws });
   console.log(`Client connected: ${clientId}`);
   
   ws.on('message', (message) => {
@@ -83,7 +85,41 @@ wss.on('connection', (ws) => {
   });
 });
 
+/**
+ * NEW: Broadcasts a message to clients who match specific criteria (e.g., branch, year, section).
+ * This is essential for the new announcement feature.
+ * @param {object} criteria - The criteria to match users against (e.g., { role: 'student', branch: 'CSE' }).
+ * @param {object} message - The message object to send.
+ */
+function broadcastTo(criteria, message) {
+    const messageString = JSON.stringify(message);
+    for (const client of connectedClients.values()) {
+        if (client.user && client.ws.readyState === WebSocket.OPEN) {
+            const userMatch = Object.keys(criteria).every(key => {
+                // Use '==' for year to match number with string from some clients
+                return client.user[key] == criteria[key];
+            });
+            if (userMatch) {
+                client.ws.send(messageString);
+            }
+        }
+    }
+}
+
+
 function handleWebSocketMessage(clientId, data) {
+  // NEW: Associate user info with the WebSocket connection upon login/identification
+  // This is required for targeted messaging like announcements
+  if (data.type === 'IDENTIFY') {
+      const client = connectedClients.get(clientId);
+      if (client) {
+          client.user = data.user;
+          console.log(`Client ${clientId} identified as ${data.user.role} ${data.user.roll}`);
+      }
+      return;
+  }
+
+  // Original WebSocket message handling
   switch (data.type) {
     case 'BLUETOOTH_DEVICE_DISCOVERED':
       handleDeviceDiscovery(clientId, data);
@@ -104,7 +140,7 @@ function handleDeviceDiscovery(clientId, data) {
   const { deviceId, deviceName, rssi, roll } = data;
   discoveredDevices.set(deviceId, { deviceId, deviceName, rssi, roll, timestamp: Date.now(), clientId });
   if (activeBluetoothSession && activeBluetoothSession.facultyClientId) {
-    const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
+    const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId)?.ws;
     if (facultyWs) {
       facultyWs.send(JSON.stringify({ type: 'DEVICE_FOUND', device: { deviceId, deviceName, rssi, roll } }));
     }
@@ -144,7 +180,7 @@ async function handleAttendanceRequest(clientId, data) {
 
         sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: true, message: 'Attendance marked successfully!' });
         
-        const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
+        const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId)?.ws;
         if (facultyWs) {
             facultyWs.send(JSON.stringify({ type: 'ATTENDANCE_MARKED', roll, deviceId }));
         }
@@ -168,7 +204,7 @@ function handleFacultyScanStop(clientId) {
 }
 
 function sendToClient(clientId, message) {
-  const ws = connectedClients.get(clientId);
+  const ws = connectedClients.get(clientId)?.ws;
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(message));
   }
@@ -192,7 +228,7 @@ app.post('/api/login', async (req, res) => {
 
     // REVERTED: Simple password comparison
     if (!user || user.password !== password) {
-      return res.json({ success: false, message: 'Invalid credentials.' });
+      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
     const { password: _, ...userPayload } = user;
@@ -207,23 +243,67 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/timetable/student', async (req, res) => {
     try {
         const { branch, year, section } = req.query;
+        if (!branch || !year || !section) {
+            return res.status(400).json({ success: false, message: 'Branch, year, and section are required.' });
+        }
+        
         const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
-        const timetable = await timetableCollection.find({ branch, year: parseInt(year), section }).toArray();
+
+        // REVISED: Use aggregation to look up faculty names from the users collection.
+        const timetable = await timetableCollection.aggregate([
+            {
+                $match: {
+                    branch,
+                    year: parseInt(year),
+                    section
+                }
+            },
+            {
+                $lookup: {
+                    from: COLLECTIONS.USERS,
+                    localField: 'facultyId',
+                    foreignField: 'roll',
+                    as: 'facultyDetails'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$facultyDetails',
+                    preserveNullAndEmptyArrays: true // Keep timetable slot even if faculty not found
+                }
+            },
+            {
+                $addFields: {
+                    // Show faculty name, or the ID if name is not available
+                    "facultyName": { $ifNull: ["$facultyDetails.name", "$facultyId"] }
+                }
+            },
+            {
+                $project: {
+                    facultyDetails: 0 // Exclude the full facultyDetails object
+                }
+            }
+        ]).toArray();
+        
         res.json({ success: true, timetable });
     } catch (err) {
-        res.status(500).json({ success: false, message: 'Server error' });
+        console.error("Student Timetable Error:", err);
+        res.status(500).json({ success: false, message: 'Server error fetching timetable' });
     }
 });
+
 
 app.get('/api/timetable/faculty/:facultyId', async (req, res) => {
     try {
         const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
+        // Find all slots where this faculty teaches
         const timetable = await timetableCollection.find({ facultyId: req.params.facultyId }).toArray();
         res.json({ success: true, timetable });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
+
 
 // --- Attendance Endpoints ---
 app.post('/api/attendance/session', (req, res) => {
@@ -285,7 +365,8 @@ app.get('/api/student/attendance/summary/:roll', async (req, res) => {
         const subjectAttended = {};
         attendanceRecords.forEach(record => {
             const dayOfWeek = new Date(record.timestamp).toLocaleString('en-us', { weekday: 'long' });
-            const classOnDay = timetable.find(slot => slot.day === dayOfWeek);
+            // Find a class in the timetable that matches the day of the attendance record
+            const classOnDay = timetable.find(slot => slot.day.toLowerCase() === dayOfWeek.toLowerCase());
             if(classOnDay){
                 subjectAttended[classOnDay.subject] = (subjectAttended[classOnDay.subject] || 0) + 1;
             }
@@ -321,50 +402,61 @@ app.get('/api/student/attendance/summary/:roll', async (req, res) => {
 //          ADMIN FEATURES - API ENDPOINTS
 // ========================================================
 
-// --- User Management (CRUD with Plaintext Passwords) ---
+// --- User Management (FIXED & FULLY IMPLEMENTED) ---
 
+// GET all users
 app.get('/api/admin/users', async (req, res) => {
     try {
         const usersCollection = getCollection(COLLECTIONS.USERS);
-        const users = await usersCollection.find({}).toArray();
+        // Exclude passwords from the response
+        const users = await usersCollection.find({}, { projection: { password: 0 } }).toArray();
         res.json({ success: true, users });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Failed to fetch users.' });
     }
 });
 
+// POST a new user
 app.post('/api/admin/users', async (req, res) => {
     try {
         const { name, email, role, department, roll, password } = req.body;
         if (!name || !role || !roll || !password) {
-            return res.status(400).json({ success: false, message: 'Missing required fields.' });
+            return res.status(400).json({ success: false, message: 'Name, role, ID, and password are required.' });
         }
         const usersCollection = getCollection(COLLECTIONS.USERS);
         
         const existingUser = await usersCollection.findOne({ roll });
         if (existingUser) {
-            return res.status(400).json({ success: false, message: 'User with this ID already exists.' });
+            return res.status(409).json({ success: false, message: 'User with this ID already exists.' });
         }
-
-        // REVERTED: Save password directly as plaintext
+        
         const result = await usersCollection.insertOne({
-            name, email, role, department, roll, password: password, createdAt: new Date()
+            name, email, role, department, roll, password, createdAt: new Date()
         });
-        res.status(201).json({ success: true, userId: result.insertedId });
+        
+        // Find the inserted doc to return it (without password)
+        const newUser = await usersCollection.findOne({ _id: result.insertedId }, { projection: { password: 0 } });
+        res.status(201).json({ success: true, user: newUser });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Failed to create user.' });
     }
 });
 
+// PUT (update) an existing user
 app.put('/api/admin/users/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { name, email, role, department, roll, password } = req.body;
+        
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid user ID.' });
+        }
+        
         const usersCollection = getCollection(COLLECTIONS.USERS);
         
         const updateData = { name, email, role, department, roll };
 
-        // REVERTED: If a new password is provided, save it as plaintext
+        // Only update password if a new one is provided
         if (password) {
             updateData.password = password;
         }
@@ -377,15 +469,22 @@ app.put('/api/admin/users/:id', async (req, res) => {
         if (result.matchedCount === 0) {
             return res.status(404).json({ success: false, message: 'User not found.' });
         }
-        res.json({ success: true, message: 'User updated successfully.' });
+        const updatedUser = await usersCollection.findOne({ _id: new ObjectId(id) }, { projection: { password: 0 } });
+        res.json({ success: true, message: 'User updated successfully.', user: updatedUser });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Failed to update user.' });
     }
 });
 
+// DELETE a user
 app.delete('/api/admin/users/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid user ID.' });
+        }
+        
         const usersCollection = getCollection(COLLECTIONS.USERS);
         const result = await usersCollection.deleteOne({ _id: new ObjectId(id) });
 
@@ -399,7 +498,6 @@ app.delete('/api/admin/users/:id', async (req, res) => {
 });
 
 // --- Interactive Timetable Editor ---
-
 app.post('/api/admin/timetable/bulk-update', async (req, res) => {
     try {
         const { branch, year, section, timetableEntries } = req.body;
@@ -428,7 +526,26 @@ app.post('/api/admin/timetable/bulk-update', async (req, res) => {
     }
 });
 
-// --- Attendance Reporting ---
+// --- Attendance Reporting (FIXED) ---
+// NEW endpoint for VIEWING attendance records
+app.get('/api/admin/attendance', async (req, res) => {
+    try {
+        const { branch, year, section, date } = req.query;
+        const filter = {};
+        if (branch) filter.branch = branch;
+        if (year) filter.year = parseInt(year);
+        if (section) filter.section = section;
+        if (date) filter.date = date;
+
+        const collection = getCollection(COLLECTIONS.ATTENDANCE);
+        const attendance = await collection.find(filter).sort({ timestamp: -1 }).toArray();
+        
+        res.json({ success: true, attendance });
+    } catch (err) {
+        console.error("Attendance View Error:", err);
+        res.status(500).json({ success: false, message: 'Server error while fetching attendance records' });
+    }
+});
 
 app.get('/api/admin/attendance/export', async (req, res) => {
     try {
@@ -461,6 +578,60 @@ app.get('/api/admin/attendance/export', async (req, res) => {
     }
 });
 
+// --- NEW: ANNOUNCEMENT SYSTEM ---
+app.post('/api/faculty/announce', async (req, res) => {
+    try {
+        const { branch, year, section, message, facultyId } = req.body;
+        if (!message || !facultyId) {
+            return res.status(400).json({ success: false, message: 'Message and facultyId are required.'});
+        }
+        
+        // The audience for the announcement
+        const audience = { branch, year: parseInt(year), section };
+        
+        const announcementsCollection = getCollection("announcements"); // This collection will be created on first use
+        const announcement = {
+            facultyId,
+            audience,
+            message,
+            createdAt: new Date()
+        };
+        
+        await announcementsCollection.insertOne(announcement);
+
+        // Use WebSocket to push notification to relevant online students
+        broadcastTo(
+            { role: 'student', ...audience }, 
+            { type: 'NEW_ANNOUNCEMENT', payload: announcement }
+        );
+
+        res.status(201).json({ success: true, message: 'Announcement sent successfully.' });
+    } catch(error) {
+        console.error("Announcement Error:", error);
+        res.status(500).json({ success: false, message: 'Failed to send announcement.' });
+    }
+});
+
+app.get('/api/student/notifications', async (req, res) => {
+    try {
+        const { branch, year, section } = req.query;
+        if (!branch || !year || !section) {
+            return res.status(400).json({ success: false, message: 'Branch, year, and section are required.' });
+        }
+        const announcementsCollection = getCollection("announcements");
+
+        // Find announcements targeted at the student's group, or announcements for all sections
+        const announcements = await announcementsCollection.find({
+            'audience.branch': branch,
+            'audience.year': parseInt(year),
+            'audience.section': { $in: [section, "All"] } // A faculty could send to 'All' sections
+        }).sort({ createdAt: -1 }).limit(20).toArray();
+
+        res.json({ success: true, announcements });
+    } catch(error) {
+        res.status(500).json({ success: false, message: 'Failed to fetch notifications.' });
+    }
+});
 
 // ========================================================
 //                  SERVER INITIALIZATION
