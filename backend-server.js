@@ -225,6 +225,31 @@ app.get('/api/timetable/faculty/:facultyId', async (req, res) => {
     }
 });
 
+// New endpoint to get faculty names by IDs
+app.post('/api/faculty/names', async (req, res) => {
+    try {
+        const { facultyIds } = req.body;
+        if (!facultyIds || !Array.isArray(facultyIds)) {
+            return res.status(400).json({ success: false, message: 'Invalid faculty IDs provided.' });
+        }
+        
+        const usersCollection = getCollection(COLLECTIONS.USERS);
+        const faculty = await usersCollection.find({ 
+            roll: { $in: facultyIds }, 
+            role: 'faculty' 
+        }).toArray();
+        
+        const facultyNames = {};
+        faculty.forEach(f => {
+            facultyNames[f.roll] = f.name || f.roll;
+        });
+        
+        res.json({ success: true, facultyNames });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 // --- Attendance Endpoints ---
 app.post('/api/attendance/session', (req, res) => {
   activeBluetoothSession = { startTime: Date.now() };

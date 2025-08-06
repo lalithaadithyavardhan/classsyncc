@@ -131,6 +131,7 @@ function showRoleView(role) {
     document.getElementById(`${role}View`).classList.remove('hidden');
     loadDashboardContent(role);
     showSection('dashboard');
+    setupDashboardRefresh(); // Set up periodic refresh
 }
 
 function updateUserInfo() {
@@ -179,6 +180,12 @@ async function loadDashboardContent(role) {
         } catch (error) {
             console.error("Failed to load user stats:", error);
         }
+    } else if (role === 'student') {
+        // Load current and next class information for students
+        await loadStudentDashboardClasses();
+    } else if (role === 'faculty') {
+        // Load faculty dashboard information
+        await loadFacultyDashboardClasses();
     }
 }
 
@@ -208,7 +215,7 @@ function loadTimetableContent() {
         content.appendChild(editor);
         initAdminTimetableEditor();
     } else {
-        content.innerHTML = `<div class="overflow-x-auto"><table class="w-full"><thead><tr class="bg-gray-50"><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tuesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Wednesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thursday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Friday</th></tr></thead><tbody id="timetable-body" class="bg-white divide-y divide-gray-200"><tr><td colspan="6" class="text-center p-4">Loading...</td></tr></tbody></table></div>`;
+        content.innerHTML = `<div class="overflow-x-auto"><table class="w-full"><thead><tr class="bg-gray-50"><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tuesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Wednesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thursday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Friday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Saturday</th></tr></thead><tbody id="timetable-body" class="bg-white divide-y divide-gray-200"><tr><td colspan="7" class="text-center p-4">Loading...</td></tr></tbody></table></div>`;
         fetchUserTimetable();
     }
 }
@@ -246,7 +253,7 @@ async function handleAdminViewTimetable() {
         const response = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}`);
         const data = await response.json();
         if (data.success && data.timetable) {
-            const periodMap = { '9:30': 1, '10:20': 2, '11:10': 3, '12:00': 4, '1:50': 5, '2:40': 6, '3:30': 7 };
+            const periodMap = { '9:30': 1, '10:20': 2, '11:10': 3, '12:00': 4, '12:30': 5, '1:20': 6, '2:10': 7 };
             data.timetable.forEach(slot => {
                 const period = periodMap[slot.startTime];
                 if (period) {
@@ -270,7 +277,7 @@ async function handleAdminSaveTimetable() {
     const year = document.getElementById('admin-year-select').value;
     const section = document.getElementById('admin-section-select').value;
     const timetableData = [];
-    const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '1:50', 6: '2:40', 7: '3:30' };
+    const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '12:30', 6: '1:20', 7: '2:10' };
     document.querySelectorAll('#admin-timetable-grid-body tr').forEach(row => {
         const day = row.querySelector('th').textContent;
         for (let period = 1; period <= 7; period++) {
@@ -426,6 +433,27 @@ async function fetchUserTimetable() {
         const tableBody = document.getElementById('timetable-body');
         tableBody.innerHTML = '';
         if (data.success && data.timetable.length > 0) {
+            // Get unique faculty IDs to fetch names
+            const facultyIds = [...new Set(data.timetable.map(entry => entry.facultyId).filter(id => id))];
+            const facultyNames = {};
+            
+            // Fetch faculty names if we're showing student timetable
+            if (currentRole === 'student' && facultyIds.length > 0) {
+                try {
+                    const facultyResponse = await fetch('/api/faculty/names', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ facultyIds })
+                    });
+                    const facultyData = await facultyResponse.json();
+                    if (facultyData.success) {
+                        facultyNames = facultyData.facultyNames;
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch faculty names:", error);
+                }
+            }
+            
             const groupedByTime = data.timetable.reduce((acc, entry) => {
                 if (!acc[entry.startTime]) acc[entry.startTime] = {};
                 acc[entry.startTime][entry.day] = entry;
@@ -440,14 +468,223 @@ async function fetchUserTimetable() {
                     cell.className = 'px-6 py-4';
                     const entry = groupedByTime[time][day];
                     if (entry) {
-                        cell.innerHTML = `<div class="timetable-cell bg-indigo-50 border-l-4 border-indigo-500 p-2 rounded"><p class="font-semibold text-indigo-800">${entry.subject}</p><p class="text-xs text-gray-600">${entry.room}</p>${currentRole === 'student' ? `<p class="text-xs text-gray-500">${entry.facultyId}</p>` : ''}</div>`;
+                        const facultyDisplay = currentRole === 'student' && entry.facultyId ? 
+                            (facultyNames[entry.facultyId] || entry.facultyId) : entry.facultyId || '';
+                        cell.innerHTML = `<div class="timetable-cell bg-indigo-50 border-l-4 border-indigo-500 p-2 rounded"><p class="font-semibold text-indigo-800">${entry.subject}</p><p class="text-xs text-gray-600">${entry.room}</p>${currentRole === 'student' && facultyDisplay ? `<p class="text-xs text-gray-500">${facultyDisplay}</p>` : ''}</div>`;
                     }
                 });
             }
         } else {
-            tableBody.innerHTML = `<tr><td colspan="6" class="text-center p-4">No timetable found.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center p-4">No timetable found.</td></tr>`;
         }
     } catch (error) { console.error("Failed to fetch timetable:", error); }
+}
+
+// Function to load current and next classes for student dashboard
+async function loadStudentDashboardClasses() {
+    if (!currentUser || currentRole !== 'student') return;
+    
+    try {
+        const { branch, year, section } = currentUser;
+        const response = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}`);
+        const data = await response.json();
+        
+        if (data.success && data.timetable.length > 0) {
+            const currentTime = new Date();
+            const currentDay = currentTime.toLocaleDateString('en-US', { weekday: 'long' });
+            const currentTimeStr = currentTime.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                hour12: false 
+            });
+            
+            // Get today's classes
+            const todayClasses = data.timetable.filter(entry => entry.day === currentDay);
+            
+            // Sort classes by time
+            const timeSlots = ['9:30', '10:20', '11:10', '12:00', '12:30', '1:20', '2:10'];
+            todayClasses.sort((a, b) => timeSlots.indexOf(a.startTime) - timeSlots.indexOf(b.startTime));
+            
+            let currentClass = null;
+            let nextClass = null;
+            
+            // Find current class
+            for (let i = 0; i < todayClasses.length; i++) {
+                const classTime = todayClasses[i].startTime;
+                const classEndTime = getClassEndTime(classTime);
+                
+                if (currentTimeStr >= classTime && currentTimeStr < classEndTime) {
+                    currentClass = todayClasses[i];
+                    nextClass = todayClasses[i + 1] || null;
+                    break;
+                } else if (currentTimeStr < classTime) {
+                    nextClass = todayClasses[i];
+                    break;
+                }
+            }
+            
+            // If no current class found, check if we're between classes
+            if (!currentClass && !nextClass && todayClasses.length > 0) {
+                const lastClass = todayClasses[todayClasses.length - 1];
+                const lastClassEndTime = getClassEndTime(lastClass.startTime);
+                
+                if (currentTimeStr > lastClassEndTime) {
+                    // School day is over
+                    updateClassDisplay('No more classes today', '', '', 'No more classes today', '', '');
+                } else {
+                    // Before first class
+                    nextClass = todayClasses[0];
+                    updateClassDisplay('No current class', '', '', nextClass.subject, `${nextClass.startTime} - ${getClassEndTime(nextClass.startTime)}`, `Room ${nextClass.room}`);
+                }
+            } else {
+                // Update display with current and next class
+                if (currentClass) {
+                    updateClassDisplay(
+                        currentClass.subject,
+                        `${currentClass.startTime} - ${getClassEndTime(currentClass.startTime)}`,
+                        `Room ${currentClass.room}`,
+                        nextClass ? nextClass.subject : 'No next class',
+                        nextClass ? `${nextClass.startTime} - ${getClassEndTime(nextClass.startTime)}` : '',
+                        nextClass ? `Room ${nextClass.room}` : ''
+                    );
+                } else if (nextClass) {
+                    updateClassDisplay(
+                        'No current class',
+                        '',
+                        '',
+                        nextClass.subject,
+                        `${nextClass.startTime} - ${getClassEndTime(nextClass.startTime)}`,
+                        `Room ${nextClass.room}`
+                    );
+                } else {
+                    updateClassDisplay('No classes today', '', '', 'No classes today', '', '');
+                }
+            }
+        } else {
+            updateClassDisplay('No timetable found', '', '', 'No timetable found', '', '');
+        }
+    } catch (error) {
+        console.error("Failed to load dashboard classes:", error);
+        updateClassDisplay('Error loading classes', '', '', 'Error loading classes', '', '');
+    }
+}
+
+// Helper function to get class end time
+function getClassEndTime(startTime) {
+    const timeMap = {
+        '9:30': '10:20',
+        '10:20': '11:10',
+        '11:10': '12:00',
+        '12:00': '12:30',
+        '12:30': '1:20',
+        '1:20': '2:10',
+        '2:10': '3:00'
+    };
+    return timeMap[startTime] || 'Unknown';
+}
+
+// Helper function to update class display
+function updateClassDisplay(currentSubject, currentTime, currentRoom, nextSubject, nextTime, nextRoom) {
+    const currentSubjectEl = document.getElementById('current-class-subject');
+    const currentTimeEl = document.getElementById('current-class-time');
+    const currentRoomEl = document.getElementById('current-class-room');
+    const nextSubjectEl = document.getElementById('next-class-subject');
+    const nextTimeEl = document.getElementById('next-class-time');
+    const nextRoomEl = document.getElementById('next-class-room');
+    
+    if (currentSubjectEl) currentSubjectEl.textContent = currentSubject;
+    if (currentTimeEl) currentTimeEl.textContent = currentTime;
+    if (currentRoomEl) currentRoomEl.textContent = currentRoom;
+    if (nextSubjectEl) nextSubjectEl.textContent = nextSubject;
+    if (nextTimeEl) nextTimeEl.textContent = nextTime;
+    if (nextRoomEl) nextRoomEl.textContent = nextRoom;
+}
+
+// Set up periodic refresh of dashboard classes
+function setupDashboardRefresh() {
+    if (currentRole === 'student' || currentRole === 'faculty') {
+        // Refresh every 5 minutes
+        setInterval(async () => {
+            if (currentRole === 'student') {
+                await loadStudentDashboardClasses();
+            } else if (currentRole === 'faculty') {
+                await loadFacultyDashboardClasses();
+            }
+        }, 5 * 60 * 1000); // 5 minutes
+    }
+}
+
+// Function to load faculty dashboard classes
+async function loadFacultyDashboardClasses() {
+    if (!currentUser || currentRole !== 'faculty') return;
+    
+    try {
+        const response = await fetch(`/api/timetable/faculty/${currentUser.roll}`);
+        const data = await response.json();
+        
+        if (data.success && data.timetable.length > 0) {
+            const currentTime = new Date();
+            const currentDay = currentTime.toLocaleDateString('en-US', { weekday: 'long' });
+            const currentTimeStr = currentTime.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                hour12: false 
+            });
+            
+            // Get today's classes
+            const todayClasses = data.timetable.filter(entry => entry.day === currentDay);
+            
+            // Sort classes by time
+            const timeSlots = ['9:30', '10:20', '11:10', '12:00', '12:30', '1:20', '2:10'];
+            todayClasses.sort((a, b) => timeSlots.indexOf(a.startTime) - timeSlots.indexOf(b.startTime));
+            
+            let nextClass = null;
+            
+            // Find next class
+            for (let i = 0; i < todayClasses.length; i++) {
+                const classTime = todayClasses[i].startTime;
+                if (currentTimeStr < classTime) {
+                    nextClass = todayClasses[i];
+                    break;
+                }
+            }
+            
+            // Update faculty dashboard
+            const nextClassSubjectEl = document.getElementById('faculty-next-class-subject');
+            const nextClassTimeEl = document.getElementById('faculty-next-class-time');
+            const nextClassRoomEl = document.getElementById('faculty-next-class-room');
+            
+            if (nextClass) {
+                if (nextClassSubjectEl) nextClassSubjectEl.textContent = nextClass.subject;
+                if (nextClassTimeEl) nextClassTimeEl.textContent = `${nextClass.startTime} - ${getClassEndTime(nextClass.startTime)}`;
+                if (nextClassRoomEl) nextClassRoomEl.textContent = `Room ${nextClass.room}`;
+            } else {
+                if (nextClassSubjectEl) nextClassSubjectEl.textContent = 'No more classes today';
+                if (nextClassTimeEl) nextClassTimeEl.textContent = '';
+                if (nextClassRoomEl) nextClassRoomEl.textContent = '';
+            }
+            
+            // Update today's schedule
+            const scheduleEl = document.getElementById('faculty-today-schedule');
+            if (scheduleEl) {
+                if (todayClasses.length > 0) {
+                    scheduleEl.innerHTML = todayClasses.map(cls => 
+                        `<div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                            <span class="font-medium">${cls.subject}</span>
+                            <span class="text-sm text-gray-600">${cls.startTime} - ${getClassEndTime(cls.startTime)} | Room ${cls.room}</span>
+                        </div>`
+                    ).join('');
+                } else {
+                    scheduleEl.innerHTML = '<p class="text-gray-500">No classes scheduled today</p>';
+                }
+            }
+        } else {
+            const nextClassSubjectEl = document.getElementById('faculty-next-class-subject');
+            if (nextClassSubjectEl) nextClassSubjectEl.textContent = 'No timetable found';
+        }
+    } catch (error) {
+        console.error("Failed to load faculty dashboard classes:", error);
+    }
 }
 
 function markAttendance() {

@@ -147,8 +147,18 @@
                     <!-- Student Dashboard -->
                     <div id="studentView" class="hidden">
                          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div class="bg-white p-6 rounded-xl shadow-md card-hover"><h3 class="font-bold text-lg">Current Class</h3><p class="text-gray-500 mt-2">Data Structures (CS201)</p></div>
-                            <div class="bg-white p-6 rounded-xl shadow-md card-hover"><h3 class="font-bold text-lg">Next Class</h3><p class="text-gray-500 mt-2">Algorithms (CS202)</p></div>
+                            <div class="bg-white p-6 rounded-xl shadow-md card-hover">
+                                <h3 class="font-bold text-lg">Current Class</h3>
+                                <p id="current-class-subject" class="text-gray-500 mt-2">Loading...</p>
+                                <p id="current-class-time" class="text-sm text-gray-500">Loading...</p>
+                                <p id="current-class-room" class="text-sm text-gray-500">Loading...</p>
+                            </div>
+                            <div class="bg-white p-6 rounded-xl shadow-md card-hover">
+                                <h3 class="font-bold text-lg">Next Class</h3>
+                                <p id="next-class-subject" class="text-gray-500 mt-2">Loading...</p>
+                                <p id="next-class-time" class="text-sm text-gray-500">Loading...</p>
+                                <p id="next-class-room" class="text-sm text-gray-500">Loading...</p>
+                            </div>
                             <div class="bg-white p-6 rounded-xl shadow-md card-hover">
                                 <h3 class="font-bold text-lg mb-4">Quick Actions</h3>
                                 <div class="grid grid-cols-2 gap-4">
@@ -358,8 +368,6 @@
                         <option value="F">F</option>
                         <option value="G">G</option>
                         <option value="H">H</option>
-                        <option value="A">A</option>
-                        <option value="B">B</option>
                     </select>
                 </div>
                 <div class="pt-6">
@@ -375,11 +383,11 @@
                             <th scope="col" class="px-2 py-3">1 (9:30-10:20)</th>
                             <th scope="col" class="px-2 py-3">2 (10:20-11:10)</th>
                             <th scope="col" class="px-2 py-3">3 (11:10-12:00)</th>
-                            <th scope="col" class="px-2 py-3">4 (12:00-12:50)</th>
+                            <th scope="col" class="px-2 py-3">4 (12:00-12:30)</th>
                             <th scope="col" class="px-2 py-3 text-center">LUNCH</th>
-                            <th scope="col" class="px-2 py-3">5 (1:50-2:40)</th>
-                            <th scope="col" class="px-2 py-3">6 (2:40-3:30)</th>
-                            <th scope="col" class="px-2 py-3">7 (3:30-4:20)</th>
+                            <th scope="col" class="px-2 py-3">5 (12:30-1:20)</th>
+                            <th scope="col" class="px-2 py-3">6 (1:20-2:10)</th>
+                            <th scope="col" class="px-2 py-3">7 (2:10-3:00)</th>
                         </tr>
                     </thead>
                     <tbody id="admin-timetable-grid-body">
