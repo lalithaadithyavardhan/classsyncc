@@ -208,16 +208,75 @@ function loadAttendanceContent() {
 // --- TIMETABLE SECTION ---
 function loadTimetableContent() {
     const content = document.getElementById('timetableContent');
-    content.innerHTML = ''; 
+    content.innerHTML = '';
     if (currentRole === 'admin') {
         const template = document.getElementById('admin-timetable-editor');
         const editor = template.content.cloneNode(true);
         content.appendChild(editor);
         initAdminTimetableEditor();
+    } else if (currentRole === 'faculty') {
+        // Show the new card-based timetable
+        const timetableDiv = document.createElement('div');
+        timetableDiv.id = 'faculty-weekly-timetable';
+        content.appendChild(timetableDiv);
+        renderFacultyWeeklyTimetable();
     } else {
         content.innerHTML = `<div class="overflow-x-auto"><table class="w-full"><thead><tr class="bg-gray-50"><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tuesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Wednesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thursday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Friday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Saturday</th></tr></thead><tbody id="timetable-body" class="bg-white divide-y divide-gray-200"><tr><td colspan="7" class="text-center p-4">Loading...</td></tr></tbody></table></div>`;
         fetchUserTimetable();
     }
+}
+
+// Render the new faculty weekly timetable (card-based)
+async function renderFacultyWeeklyTimetable() {
+    const timetableDiv = document.getElementById('faculty-weekly-timetable');
+    if (!timetableDiv) return;
+    timetableDiv.innerHTML = '';
+    timetableDiv.className = 'grid grid-cols-1 md:grid-cols-6 gap-4';
+
+    // Days of week (Monday to Saturday)
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    // Fetch timetable
+    let timetable = [];
+    try {
+        const response = await fetch(`/api/timetable/faculty/${currentUser.roll}`);
+        const data = await response.json();
+        if (data.success && data.timetable.length > 0) {
+            timetable = data.timetable;
+        }
+    } catch (e) {
+        timetableDiv.innerHTML = '<p class="text-red-500">Failed to load timetable.</p>';
+        return;
+    }
+    // Group by day
+    const grouped = {};
+    days.forEach(day => grouped[day] = []);
+    timetable.forEach(entry => {
+        if (grouped[entry.day]) grouped[entry.day].push(entry);
+    });
+    // Sort each day's classes by start time
+    const timeOrder = ['9:30', '10:20', '11:10', '12:00', '12:30', '1:20', '2:10'];
+    days.forEach(day => {
+        grouped[day].sort((a, b) => timeOrder.indexOf(a.startTime) - timeOrder.indexOf(b.startTime));
+    });
+    // Render columns
+    days.forEach(day => {
+        const col = document.createElement('div');
+        col.className = 'bg-gray-50 rounded-lg shadow p-2 flex flex-col';
+        col.innerHTML = `<div class="text-center font-bold text-lg py-2 border-b mb-2">${day}</div>`;
+        if (grouped[day].length === 0) {
+            col.innerHTML += '<div class="text-gray-400 text-center py-4">No Classes</div>';
+        } else {
+            grouped[day].forEach(cls => {
+                col.innerHTML += `
+                <div class="mb-3 p-3 rounded-lg shadow-sm border-l-4" style="border-color: #6366f1; background: #f8fafc;">
+                    <div class="font-semibold text-indigo-800">${cls.subject}</div>
+                    <div class="text-xs text-gray-600">${cls.startTime} - ${getClassEndTime(cls.startTime)}</div>
+                    <div class="text-xs text-gray-500">Room ${cls.room}</div>
+                </div>`;
+            });
+        }
+        timetableDiv.appendChild(col);
+    });
 }
 
 // ========================================================
