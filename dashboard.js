@@ -297,33 +297,107 @@ function loadAttendanceContent() {
     } else if (currentRole === 'faculty') {
         content.innerHTML = `
             <div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <h3 class="text-xl font-bold mb-4">Start Attendance Session</h3>
-                        <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4">
-                            <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
-                        </button>
-                        <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg mb-4"></div>
-                        <div>
-                            <h4 class="font-semibold mb-2">Manual Attendance</h4>
-                            <div class="flex gap-2">
-                                <input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg">
-                                <button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                    Add
-                                </button>
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold mb-4">Enhanced Attendance System</h3>
+                    
+                    <!-- Class Selection Form -->
+                    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                        <h4 class="font-semibold mb-4 text-gray-800">Select Class & Periods</h4>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Date:</label>
+                                <input type="date" id="attendance-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Subject:</label>
+                                <select id="class-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                    <option value="">Select Subject</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Periods:</label>
+                                <div class="flex flex-wrap gap-2">
+                                    ${[1,2,3,4,5,6,7].map(p => `
+                                        <label class="flex items-center">
+                                            <input type="checkbox" value="${p}" class="mr-1">
+                                            <span class="text-sm">Period ${p}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
                             </div>
                         </div>
+                        
+                        <button onclick="loadClassStudents()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
+                            <i class="fas fa-search mr-2"></i>Show Students
+                        </button>
                     </div>
-                    <div>
-                        <h4 class="font-semibold mb-2">Discovered Devices</h4>
-                        <ul id="discovered-devices-list" class="space-y-2"></ul>
-                        <h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4>
-                        <div id="faculty-attendance-list" class="space-y-2"></div>
+                    
+                    <!-- Attendance Session Controls -->
+                    <div id="session-controls" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
+                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Session</h4>
+                        <div class="flex gap-4 mb-4">
+                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                                <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
+                            </button>
+                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">
+                                <i class="fas fa-stop mr-2"></i>Stop Scanning
+                            </button>
+                        </div>
+                        <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg"></div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Students List -->
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
+                        <div id="students-list" class="space-y-2 max-h-96 overflow-y-auto">
+                            <p class="text-gray-500 text-center py-8">Select a class to view students</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Attendance Records -->
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Records</h4>
+                        <div id="attendance-records" class="space-y-2 max-h-96 overflow-y-auto">
+                            <p class="text-gray-500 text-center py-8">No attendance records yet</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Legacy Interface (Hidden by default) -->
+                <div id="legacy-faculty-interface" class="hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h3 class="text-xl font-bold mb-4">Legacy Attendance Session</h3>
+                            <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4">
+                                <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
+                            </button>
+                            <div id="bluetooth-status-legacy" class="p-3 bg-gray-100 rounded-lg mb-4"></div>
+                            <div>
+                                <h4 class="font-semibold mb-2">Manual Attendance</h4>
+                                <div class="flex gap-2">
+                                    <input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg">
+                                    <button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold mb-2">Discovered Devices</h4>
+                            <ul id="discovered-devices-list" class="space-y-2"></ul>
+                            <h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4>
+                            <div id="faculty-attendance-list" class="space-y-2"></div>
+                        </div>
                     </div>
                 </div>
             </div>
         `;
-        loadFacultyAttendance();
+        
+        // Load faculty classes
+        loadFacultyClasses();
     } else if (currentRole === 'admin') {
         content.innerHTML = `
             <div>
@@ -490,7 +564,13 @@ function loadNotificationsContent() {
     `;
 }
 
-// Attendance functions
+// Enhanced Student Attendance Functions
+
+// Global variables for student attendance
+let currentStudentSessionId = null;
+let currentStudentPeriod = null;
+
+// Student attendance function - enhanced to work with sessions
 function markAttendance() {
     if (!isBluetoothSupported) {
         const statusElement = document.getElementById('attendance-status');
@@ -507,7 +587,88 @@ function markAttendance() {
         statusElement.className = 'text-yellow-600 font-medium';
     }
     
-    // Simulate Bluetooth attendance marking
+    // First, try to find an active session for the current student
+    findActiveSessionForStudent();
+}
+
+// Find active session for current student
+async function findActiveSessionForStudent() {
+    try {
+        const studentRoll = localStorage.getItem('currentUserId') || 'S101';
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Get active sessions for today
+        const response = await fetch(`/api/faculty/attendance/sessions/F101?date=${today}`);
+        const data = await response.json();
+        
+        if (data.success && data.sessions.length > 0) {
+            // Find a session where this student is enrolled
+            for (const session of data.sessions) {
+                const classData = await fetch(`/api/faculty/class/${session.classId}/students`);
+                const classResponse = await classResponse.json();
+                
+                if (classResponse.success) {
+                    const isEnrolled = classResponse.students.some(student => student.roll === studentRoll);
+                    if (isEnrolled) {
+                        currentStudentSessionId = session._id;
+                        currentStudentPeriod = session.periods[0]; // Use first period for now
+                        markAttendanceForSession(studentRoll);
+                        return;
+                    }
+                }
+            }
+        }
+        
+        // Fallback to legacy system if no session found
+        markAttendanceLegacy();
+        
+    } catch (error) {
+        console.error('Error finding active session:', error);
+        markAttendanceLegacy();
+    }
+}
+
+// Mark attendance for specific session
+function markAttendanceForSession(studentRoll) {
+    const statusElement = document.getElementById('attendance-status');
+    if (statusElement) {
+        statusElement.textContent = 'Marking attendance for active session...';
+        statusElement.className = 'text-blue-600 font-medium';
+    }
+    
+    // Simulate Bluetooth attendance marking with session
+    setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'BLUETOOTH_DEVICE_DISCOVERED',
+                deviceId: 'student-device-001',
+                deviceName: 'Student Device',
+                rssi: -65 + Math.random() * 20,
+                roll: studentRoll
+            }));
+            
+            setTimeout(() => {
+                ws.send(JSON.stringify({
+                    type: 'ATTENDANCE_REQUEST',
+                    roll: studentRoll,
+                    deviceId: 'student-device-001',
+                    sessionId: currentStudentSessionId,
+                    period: currentStudentPeriod
+                }));
+            }, 1000);
+        }
+    }, 2000);
+}
+
+// Legacy attendance function (fallback)
+function markAttendanceLegacy() {
+    const statusElement = document.getElementById('attendance-status');
+    if (statusElement) {
+        statusElement.textContent = 'No active session found, using legacy system...';
+        statusElement.className = 'text-yellow-600 font-medium';
+    }
+    
+    // Simulate Bluetooth attendance marking (legacy)
     setTimeout(() => {
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
@@ -666,6 +827,259 @@ function loadAdminAttendance() {
 function logout() {
     if (confirm('Are you sure you want to logout?')) {
         window.location.href = '/classsyncc.html';
+    }
+}
+
+// Enhanced Faculty Attendance Functions
+
+let currentSessionId = null;
+let currentClassData = null;
+let currentPeriods = [];
+
+// Load faculty classes
+async function loadFacultyClasses() {
+    try {
+        const facultyId = localStorage.getItem('currentUserId') || 'F101'; // Demo faculty ID
+        const response = await fetch(`/api/faculty/classes/${facultyId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const classSelect = document.getElementById('class-select');
+            classSelect.innerHTML = '<option value="">Select Subject</option>';
+            
+            data.classes.forEach(cls => {
+                const option = document.createElement('option');
+                option.value = cls._id;
+                option.textContent = `${cls.subject} => ${cls.branch}, ${cls.year} ${cls.branch} - ${cls.semester} ${cls.section}`;
+                classSelect.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading faculty classes:', error);
+    }
+}
+
+// Load students for selected class
+async function loadClassStudents() {
+    const classId = document.getElementById('class-select').value;
+    const date = document.getElementById('attendance-date').value;
+    const selectedPeriods = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => parseInt(cb.value));
+    
+    if (!classId) {
+        alert('Please select a class');
+        return;
+    }
+    
+    if (selectedPeriods.length === 0) {
+        alert('Please select at least one period');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/faculty/class/${classId}/students`);
+        const data = await response.json();
+        
+        if (data.success) {
+            currentClassData = data.classData;
+            currentPeriods = selectedPeriods;
+            
+            // Display students
+            const studentsList = document.getElementById('students-list');
+            studentsList.innerHTML = `
+                <div class="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <h5 class="font-semibold text-blue-800">${data.classData.subject} - ${data.classData.section}</h5>
+                    <p class="text-sm text-blue-600">Date: ${date} | Periods: ${selectedPeriods.join(', ')}</p>
+                </div>
+            `;
+            
+            data.students.forEach((student, index) => {
+                const studentDiv = document.createElement('div');
+                studentDiv.className = 'p-3 border border-gray-200 rounded-lg flex justify-between items-center';
+                studentDiv.innerHTML = `
+                    <div>
+                        <span class="font-medium">${index + 1}.</span>
+                        <span class="font-medium">${student.name}</span>
+                        <span class="text-sm text-gray-500">(${student.roll})</span>
+                    </div>
+                    <div class="flex gap-2">
+                        ${selectedPeriods.map(period => `
+                            <button onclick="markStudentAttendance('${student.roll}', ${period})" 
+                                    class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 attendance-btn" 
+                                    data-student="${student.roll}" data-period="${period}">
+                                Period ${period}
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+                studentsList.appendChild(studentDiv);
+            });
+            
+            // Show session controls
+            document.getElementById('session-controls').classList.remove('hidden');
+            
+        }
+    } catch (error) {
+        console.error('Error loading class students:', error);
+        alert('Error loading students');
+    }
+}
+
+// Mark attendance for a student
+async function markStudentAttendance(studentRoll, period) {
+    if (!currentSessionId) {
+        alert('Please start an attendance session first');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/faculty/attendance/mark', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                sessionId: currentSessionId,
+                studentRoll,
+                period,
+                method: 'manual'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update button appearance
+            const btn = document.querySelector(`[data-student="${studentRoll}"][data-period="${period}"]`);
+            if (btn) {
+                btn.classList.remove('bg-green-100', 'text-green-700', 'hover:bg-green-200');
+                btn.classList.add('bg-green-500', 'text-white');
+                btn.textContent = '✓ Present';
+                btn.disabled = true;
+            }
+            
+            // Update attendance records
+            updateAttendanceRecords();
+        } else {
+            alert(data.message);
+        }
+    } catch (error) {
+        console.error('Error marking attendance:', error);
+        alert('Error marking attendance');
+    }
+}
+
+// Start enhanced attendance session
+async function startEnhancedAttendanceSession() {
+    if (!currentClassData || currentPeriods.length === 0) {
+        alert('Please select a class and periods first');
+        return;
+    }
+    
+    const date = document.getElementById('attendance-date').value;
+    
+    try {
+        const facultyId = localStorage.getItem('currentUserId') || 'F101';
+        const response = await fetch('/api/faculty/attendance/session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                classId: currentClassData._id,
+                date,
+                periods: currentPeriods,
+                facultyId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            currentSessionId = data.sessionId;
+            
+            // Update UI
+            document.getElementById('bluetooth-status').innerHTML = `
+                <div class="text-green-600 font-medium">
+                    <i class="fas fa-bluetooth mr-2"></i>Session Active - Scanning for devices...
+                </div>
+                <div class="text-sm text-gray-600 mt-2">
+                    Class: ${currentClassData.subject} | Periods: ${currentPeriods.join(', ')} | Date: ${date}
+                </div>
+            `;
+            
+            // Start WebSocket scanning
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'FACULTY_SCAN_START' }));
+            }
+            
+        } else {
+            alert(data.message);
+        }
+    } catch (error) {
+        console.error('Error starting attendance session:', error);
+        alert('Error starting attendance session');
+    }
+}
+
+// Stop enhanced attendance session
+function stopEnhancedAttendanceSession() {
+    currentSessionId = null;
+    
+    // Update UI
+    document.getElementById('bluetooth-status').innerHTML = `
+        <div class="text-red-600 font-medium">
+            <i class="fas fa-stop mr-2"></i>Session Stopped
+        </div>
+    `;
+    
+    // Stop WebSocket scanning
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'FACULTY_SCAN_STOP' }));
+    }
+}
+
+// Update attendance records display
+async function updateAttendanceRecords() {
+    if (!currentSessionId) return;
+    
+    try {
+        const response = await fetch(`/api/faculty/attendance/session/${currentSessionId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const recordsDiv = document.getElementById('attendance-records');
+            const session = data.session;
+            
+            recordsDiv.innerHTML = `
+                <div class="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <h5 class="font-semibold text-blue-800">Session Summary</h5>
+                    <p class="text-sm text-blue-600">Total Records: ${session.attendanceRecords.length}</p>
+                </div>
+            `;
+            
+            // Group records by student
+            const studentRecords = {};
+            session.attendanceRecords.forEach(record => {
+                if (!studentRecords[record.studentRoll]) {
+                    studentRecords[record.studentRoll] = [];
+                }
+                studentRecords[record.studentRoll].push(record);
+            });
+            
+            Object.entries(studentRecords).forEach(([studentRoll, records]) => {
+                const studentDiv = document.createElement('div');
+                studentDiv.className = 'p-3 border border-gray-200 rounded-lg';
+                studentDiv.innerHTML = `
+                    <div class="font-medium mb-2">${studentRoll}</div>
+                    <div class="text-sm text-gray-600">
+                        ${records.map(r => `Period ${r.period}: ${r.status} (${r.method})`).join(', ')}
+                    </div>
+                `;
+                recordsDiv.appendChild(studentDiv);
+            });
+        }
+    } catch (error) {
+        console.error('Error updating attendance records:', error);
     }
 }
 

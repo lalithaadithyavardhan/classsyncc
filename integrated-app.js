@@ -10,6 +10,17 @@ let isBluetoothSupported = 'bluetooth' in navigator;
 
 console.log(`Web Bluetooth API Supported: ${isBluetoothSupported}`);
 
+// Centralized Time Slot Mapping (Period Number to Start/End Time, 12-hour format with AM/PM)
+const TIME_SLOTS = [
+  { period: 1, start: '9:30 AM', end: '10:20 AM' },
+  { period: 2, start: '10:20 AM', end: '11:10 AM' },
+  { period: 3, start: '11:10 AM', end: '12:00 PM' },
+  { period: 4, start: '12:00 PM', end: '12:50 PM' },
+  { period: 5, start: '1:50 PM', end: '2:40 PM' },
+  { period: 6, start: '2:40 PM', end: '3:30 PM' },
+  { period: 7, start: '3:30 PM', end: '4:20 PM' }
+];
+
 // ========================================================
 //          WEBSOCKET SETUP & HANDLERS
 // ========================================================
@@ -254,9 +265,9 @@ async function renderFacultyWeeklyTimetable() {
         if (grouped[entry.day]) grouped[entry.day].push(entry);
     });
     // Sort each day's classes by start time
-    const timeOrder = ['9:30', '10:20', '11:10', '12:00', '12:30', '1:20', '2:10'];
+    const timeOrder = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
     days.forEach(day => {
-        grouped[day].sort((a, b) => timeOrder.indexOf(a.startTime) - timeOrder.indexOf(b.startTime));
+        grouped[day].sort((a, b) => timeOrder.indexOf(timeStringToMinutes(a.startTime)) - timeOrder.indexOf(timeStringToMinutes(b.startTime)));
     });
     // Render columns
     days.forEach(day => {
@@ -539,6 +550,15 @@ async function fetchUserTimetable() {
     } catch (error) { console.error("Failed to fetch timetable:", error); }
 }
 
+// Helper: Convert 12-hour time string (e.g., '1:50 PM') to minutes since midnight
+function timeStringToMinutes(timeStr) {
+  const [time, modifier] = timeStr.split(' ');
+  let [hours, minutes] = time.split(':').map(Number);
+  if (modifier === 'PM' && hours !== 12) hours += 12;
+  if (modifier === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+}
+
 // Function to load current and next classes for student dashboard
 async function loadStudentDashboardClasses() {
     if (!currentUser || currentRole !== 'student') return;
@@ -561,8 +581,8 @@ async function loadStudentDashboardClasses() {
             const todayClasses = data.timetable.filter(entry => entry.day === currentDay);
             
             // Sort classes by time
-            const timeSlots = ['9:30', '10:20', '11:10', '12:00', '12:30', '1:20', '2:10'];
-            todayClasses.sort((a, b) => timeSlots.indexOf(a.startTime) - timeSlots.indexOf(b.startTime));
+            const timeSlots = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
+            todayClasses.sort((a, b) => timeSlots.indexOf(timeStringToMinutes(a.startTime)) - timeSlots.indexOf(timeStringToMinutes(b.startTime)));
             
             let currentClass = null;
             let nextClass = null;
@@ -572,11 +592,11 @@ async function loadStudentDashboardClasses() {
                 const classTime = todayClasses[i].startTime;
                 const classEndTime = getClassEndTime(classTime);
                 
-                if (currentTimeStr >= classTime && currentTimeStr < classEndTime) {
+                if (timeStringToMinutes(currentTimeStr) >= timeStringToMinutes(classTime) && timeStringToMinutes(currentTimeStr) < timeStringToMinutes(classEndTime)) {
                     currentClass = todayClasses[i];
                     nextClass = todayClasses[i + 1] || null;
                     break;
-                } else if (currentTimeStr < classTime) {
+                } else if (timeStringToMinutes(currentTimeStr) < timeStringToMinutes(classTime)) {
                     nextClass = todayClasses[i];
                     break;
                 }
@@ -587,7 +607,7 @@ async function loadStudentDashboardClasses() {
                 const lastClass = todayClasses[todayClasses.length - 1];
                 const lastClassEndTime = getClassEndTime(lastClass.startTime);
                 
-                if (currentTimeStr > lastClassEndTime) {
+                if (timeStringToMinutes(currentTimeStr) > timeStringToMinutes(lastClassEndTime)) {
                     // School day is over
                     updateClassDisplay('No more classes today', '', '', 'No more classes today', '', '');
                 } else {
@@ -694,15 +714,15 @@ async function loadFacultyDashboardClasses() {
             const todayClasses = data.timetable.filter(entry => entry.day === currentDay);
             
             // Sort classes by time
-            const timeSlots = ['9:30', '10:20', '11:10', '12:00', '12:30', '1:20', '2:10'];
-            todayClasses.sort((a, b) => timeSlots.indexOf(a.startTime) - timeSlots.indexOf(b.startTime));
+            const timeSlots = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
+            todayClasses.sort((a, b) => timeSlots.indexOf(timeStringToMinutes(a.startTime)) - timeSlots.indexOf(timeStringToMinutes(b.startTime)));
             
             let nextClass = null;
             
             // Find next class
             for (let i = 0; i < todayClasses.length; i++) {
                 const classTime = todayClasses[i].startTime;
-                if (currentTimeStr < classTime) {
+                if (timeStringToMinutes(currentTimeStr) < timeStringToMinutes(classTime)) {
                     nextClass = todayClasses[i];
                     break;
                 }

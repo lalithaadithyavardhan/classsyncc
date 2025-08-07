@@ -48,7 +48,17 @@ const config = {
     TIMETABLE: 'timetables',
     SESSIONS: 'sessions',
     DEVICES: 'devices'
-  }
+  },
+  // Time Slot Mapping (Period Number to Start/End Time, 12-hour format with AM/PM)
+  TIME_SLOTS: [
+    { period: 1, start: '9:30 AM', end: '10:20 AM' },
+    { period: 2, start: '10:20 AM', end: '11:10 AM' },
+    { period: 3, start: '11:10 AM', end: '12:00 PM' },
+    { period: 4, start: '12:00 PM', end: '12:50 PM' },
+    { period: 5, start: '1:50 PM', end: '2:40 PM' },
+    { period: 6, start: '2:40 PM', end: '3:30 PM' },
+    { period: 7, start: '3:30 PM', end: '4:20 PM' }
+  ]
 };
 
 // Helper functions

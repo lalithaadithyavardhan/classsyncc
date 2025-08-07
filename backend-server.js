@@ -29,6 +29,10 @@ const {
   closeMongoDBConnection,
 } = require('./mongodb-config');
 
+// Import new models
+const Class = require('./models/Class');
+const AttendanceSession = require('./models/AttendanceSession');
+
 const config = require('./config');
 const app = express();
 const PORT = config.PORT;
@@ -112,14 +116,11 @@ function handleDeviceDiscovery(clientId, data) {
 }
 
 async function handleAttendanceRequest(clientId, data) {
-    const { roll, deviceId } = data;
+    const { roll, deviceId, sessionId, period } = data;
     const usersCollection = getCollection(COLLECTIONS.USERS);
     const attendanceCollection = getCollection(COLLECTIONS.ATTENDANCE);
 
-    if (!activeBluetoothSession) {
-        return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'No active attendance session.' });
-    }
-    
+    // Check if device is in range
     const discoveredDevice = discoveredDevices.get(deviceId);
     if (!discoveredDevice || discoveredDevice.rssi < -80) {
         return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Device not in range or signal too weak.' });
@@ -131,22 +132,78 @@ async function handleAttendanceRequest(clientId, data) {
             return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Student not found.' });
         }
         
-        const alreadyMarked = await attendanceCollection.findOne({ roll, date: todayStr() });
-        if (alreadyMarked) {
-            return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Attendance already marked.' });
-        }
+        // If sessionId is provided, use new attendance system
+        if (sessionId) {
+            const session = await AttendanceSession.findById(sessionId);
+            if (!session) {
+                return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Attendance session not found.' });
+            }
+            
+            // Check if student is enrolled in this class
+            const classData = await Class.findById(session.classId);
+            if (!classData.students.includes(roll)) {
+                return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Student not enrolled in this class.' });
+            }
+            
+            // Check if attendance already marked for this period
+            const existingRecord = session.attendanceRecords.find(
+                record => record.studentRoll === roll && record.period === period
+            );
+            
+            if (existingRecord) {
+                return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Attendance already marked for this period.' });
+            }
+            
+            // Add attendance record
+            session.attendanceRecords.push({
+                studentRoll: roll,
+                period,
+                status: 'present',
+                method: 'bluetooth',
+                deviceId,
+                rssi: discoveredDevice.rssi
+            });
+            
+            await session.save();
+            
+            // Notify faculty
+            const facultyWs = connectedClients.get(activeBluetoothSession?.facultyClientId);
+            if (facultyWs) {
+                facultyWs.send(JSON.stringify({ 
+                    type: 'ATTENDANCE_MARKED', 
+                    roll, 
+                    deviceId,
+                    rssi: discoveredDevice.rssi,
+                    period,
+                    sessionId
+                }));
+            }
+            
+            sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: true, message: 'Attendance marked successfully!' });
+            
+        } else {
+            // Legacy attendance system (for backward compatibility)
+            if (!activeBluetoothSession) {
+                return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'No active attendance session.' });
+            }
+            
+            const alreadyMarked = await attendanceCollection.findOne({ roll, date: todayStr() });
+            if (alreadyMarked) {
+                return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Attendance already marked.' });
+            }
 
-        await attendanceCollection.insertOne({
-            roll, date: todayStr(), status: 'Present (Bluetooth)', deviceId,
-            rssi: discoveredDevice.rssi, timestamp: new Date(),
-            branch: student.branch, year: student.year, section: student.section
-        });
+            await attendanceCollection.insertOne({
+                roll, date: todayStr(), status: 'Present (Bluetooth)', deviceId,
+                rssi: discoveredDevice.rssi, timestamp: new Date(),
+                branch: student.branch, year: student.year, section: student.section
+            });
 
-        sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: true, message: 'Attendance marked successfully!' });
-        
-        const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
-        if (facultyWs) {
-            facultyWs.send(JSON.stringify({ type: 'ATTENDANCE_MARKED', roll, deviceId }));
+            sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: true, message: 'Attendance marked successfully!' });
+            
+            const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
+            if (facultyWs) {
+                facultyWs.send(JSON.stringify({ type: 'ATTENDANCE_MARKED', roll, deviceId }));
+            }
         }
     } catch (error) {
         console.error('Attendance request error:', error);
@@ -250,7 +307,216 @@ app.post('/api/faculty/names', async (req, res) => {
     }
 });
 
-// --- Attendance Endpoints ---
+// --- Enhanced Faculty Attendance Endpoints ---
+
+// Get classes for a faculty (dynamically from existing data)
+app.get('/api/faculty/classes/:facultyId', async (req, res) => {
+  try {
+    const { facultyId } = req.params;
+    
+    // Get all students from MongoDB
+    const usersCollection = getCollection(COLLECTIONS.USERS);
+    const allStudents = await usersCollection.find({ role: 'student' }).toArray();
+    const studentRolls = allStudents.map(student => student.roll);
+    
+    // Create virtual classes based on existing students
+    // This simulates what would happen in a real system
+    const virtualClasses = [
+      {
+        _id: 'class-java-sec-a',
+        subject: 'JAVA',
+        branch: 'B.Tech',
+        year: 3,
+        semester: 'I Semester',
+        section: 'Sec-A',
+        periods: [1, 2, 3],
+        facultyId: facultyId,
+        students: studentRolls.slice(0, Math.floor(studentRolls.length / 3)),
+        isActive: true
+      },
+      {
+        _id: 'class-coding-sec-b',
+        subject: 'Coding',
+        branch: 'B.Tech',
+        year: 3,
+        semester: 'I Semester',
+        section: 'Sec-B',
+        periods: [4, 5, 6],
+        facultyId: facultyId,
+        students: studentRolls.slice(Math.floor(studentRolls.length / 3), Math.floor(2 * studentRolls.length / 3)),
+        isActive: true
+      },
+      {
+        _id: 'class-lab-sec-c',
+        subject: 'JA LAB',
+        branch: 'B.Tech',
+        year: 3,
+        semester: 'I Semester',
+        section: 'Sec-C',
+        periods: [4, 5, 6],
+        facultyId: facultyId,
+        students: studentRolls.slice(Math.floor(2 * studentRolls.length / 3)),
+        isActive: true
+      }
+    ];
+    
+    res.json(virtualClasses);
+  } catch (error) {
+    console.error('Error fetching faculty classes:', error);
+    res.status(500).json({ error: 'Failed to fetch classes' });
+  }
+});
+
+// Get students for a specific class
+app.get('/api/faculty/class/:classId/students', async (req, res) => {
+  try {
+    const { classId } = req.params;
+    
+    // Get all students from MongoDB
+    const usersCollection = getCollection(COLLECTIONS.USERS);
+    const allStudents = await usersCollection.find({ role: 'student' }).toArray();
+    const studentRolls = allStudents.map(student => student.roll);
+    
+    // Determine which students belong to this class based on classId
+    let classStudents = [];
+    if (classId === 'class-java-sec-a') {
+      classStudents = studentRolls.slice(0, Math.floor(studentRolls.length / 3));
+    } else if (classId === 'class-coding-sec-b') {
+      classStudents = studentRolls.slice(Math.floor(studentRolls.length / 3), Math.floor(2 * studentRolls.length / 3));
+    } else if (classId === 'class-lab-sec-c') {
+      classStudents = studentRolls.slice(Math.floor(2 * studentRolls.length / 3));
+    }
+    
+    // Get student details for the enrolled students
+    const students = await usersCollection.find({ 
+      roll: { $in: classStudents },
+      role: 'student'
+    }).toArray();
+    
+    res.json(students);
+  } catch (error) {
+    console.error('Error fetching class students:', error);
+    res.status(500).json({ error: 'Failed to fetch students' });
+  }
+});
+
+// Create new attendance session
+app.post('/api/faculty/attendance/session', async (req, res) => {
+  try {
+    const { classId, date, periods, facultyId } = req.body;
+    
+    // Check if session already exists
+    const existingSession = await AttendanceSession.findOne({
+      classId,
+      date,
+      status: { $in: ['active', 'completed'] }
+    });
+    
+    if (existingSession) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Attendance session already exists for this class and date.' 
+      });
+    }
+    
+    const session = new AttendanceSession({
+      classId,
+      date,
+      periods,
+      facultyId
+    });
+    
+    await session.save();
+    
+    res.json({ success: true, sessionId: session._id, message: 'Attendance session created.' });
+  } catch (error) {
+    console.error('Create attendance session error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create attendance session.' });
+  }
+});
+
+// Mark attendance for a student
+app.post('/api/faculty/attendance/mark', async (req, res) => {
+  try {
+    const { sessionId, studentRoll, period, method = 'bluetooth', deviceId, rssi } = req.body;
+    
+    const session = await AttendanceSession.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Attendance session not found.' });
+    }
+    
+    // Check if student is enrolled in this class
+    const classData = await Class.findById(session.classId);
+    if (!classData.students.includes(studentRoll)) {
+      return res.status(400).json({ success: false, message: 'Student not enrolled in this class.' });
+    }
+    
+    // Check if attendance already marked for this period
+    const existingRecord = session.attendanceRecords.find(
+      record => record.studentRoll === studentRoll && record.period === period
+    );
+    
+    if (existingRecord) {
+      return res.status(400).json({ success: false, message: 'Attendance already marked for this period.' });
+    }
+    
+    // Add attendance record
+    session.attendanceRecords.push({
+      studentRoll,
+      period,
+      status: 'present',
+      method,
+      deviceId,
+      rssi
+    });
+    
+    await session.save();
+    
+    res.json({ success: true, message: 'Attendance marked successfully.' });
+  } catch (error) {
+    console.error('Mark attendance error:', error);
+    res.status(500).json({ success: false, message: 'Failed to mark attendance.' });
+  }
+});
+
+// Get attendance session details
+app.get('/api/faculty/attendance/session/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = await AttendanceSession.findById(sessionId).populate('classId');
+    
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Attendance session not found.' });
+    }
+    
+    res.json({ success: true, session });
+  } catch (error) {
+    console.error('Get attendance session error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch attendance session.' });
+  }
+});
+
+// Get faculty's attendance sessions
+app.get('/api/faculty/attendance/sessions/:facultyId', async (req, res) => {
+  try {
+    const { facultyId } = req.params;
+    const { date } = req.query;
+    
+    const filter = { facultyId };
+    if (date) filter.date = date;
+    
+    const sessions = await AttendanceSession.find(filter)
+      .populate('classId')
+      .sort({ date: -1, startTime: -1 });
+    
+    res.json({ success: true, sessions });
+  } catch (error) {
+    console.error('Get faculty sessions error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch attendance sessions.' });
+  }
+});
+
+// --- Legacy Attendance Endpoints (for backward compatibility) ---
 app.post('/api/attendance/session', (req, res) => {
   activeBluetoothSession = { startTime: Date.now() };
   res.json({ success: true, message: "Attendance session started." });
