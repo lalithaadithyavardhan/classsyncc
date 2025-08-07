@@ -360,10 +360,10 @@ app.get('/api/faculty/classes/:facultyId', async (req, res) => {
       }
     ];
     
-    res.json(virtualClasses);
+    res.json({ success: true, classes: virtualClasses });
   } catch (error) {
     console.error('Error fetching faculty classes:', error);
-    res.status(500).json({ error: 'Failed to fetch classes' });
+    res.status(500).json({ success: false, error: 'Failed to fetch classes' });
   }
 });
 
@@ -379,12 +379,35 @@ app.get('/api/faculty/class/:classId/students', async (req, res) => {
     
     // Determine which students belong to this class based on classId
     let classStudents = [];
+    let classData = null;
+    
     if (classId === 'class-java-sec-a') {
       classStudents = studentRolls.slice(0, Math.floor(studentRolls.length / 3));
+      classData = {
+        subject: 'JAVA',
+        section: 'Sec-A',
+        branch: 'B.Tech',
+        year: 3,
+        semester: 'I Semester'
+      };
     } else if (classId === 'class-coding-sec-b') {
       classStudents = studentRolls.slice(Math.floor(studentRolls.length / 3), Math.floor(2 * studentRolls.length / 3));
+      classData = {
+        subject: 'Coding',
+        section: 'Sec-B',
+        branch: 'B.Tech',
+        year: 3,
+        semester: 'I Semester'
+      };
     } else if (classId === 'class-lab-sec-c') {
       classStudents = studentRolls.slice(Math.floor(2 * studentRolls.length / 3));
+      classData = {
+        subject: 'JA LAB',
+        section: 'Sec-C',
+        branch: 'B.Tech',
+        year: 3,
+        semester: 'I Semester'
+      };
     }
     
     // Get student details for the enrolled students
@@ -393,10 +416,10 @@ app.get('/api/faculty/class/:classId/students', async (req, res) => {
       role: 'student'
     }).toArray();
     
-    res.json(students);
+    res.json({ success: true, students, classData });
   } catch (error) {
     console.error('Error fetching class students:', error);
-    res.status(500).json({ error: 'Failed to fetch students' });
+    res.status(500).json({ success: false, error: 'Failed to fetch students' });
   }
 });
 
