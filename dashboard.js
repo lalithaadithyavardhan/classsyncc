@@ -15,6 +15,50 @@ if (navigator.bluetooth) {
     console.log('Web Bluetooth API is not supported');
 }
 
+// Initialize login form
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const role = document.getElementById('role').value;
+            const roll = document.getElementById('roll').value.trim();
+            const password = document.getElementById('password').value;
+            const loginError = document.getElementById('login-error');
+            loginError.classList.add('hidden');
+
+            if (!role || !roll || !password) {
+                loginError.textContent = 'Please fill in all fields.';
+                loginError.classList.remove('hidden');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role, roll, password })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    currentUser = data.user;
+                    currentRole = role;
+                    initWebSocket();
+                    showDashboard();
+                    updateUserInfo();
+                } else {
+                    loginError.textContent = data.message || 'Login failed.';
+                    loginError.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                loginError.textContent = 'Network error. Please try again.';
+                loginError.classList.remove('hidden');
+            }
+        });
+    }
+});
+
 // Initialize WebSocket connection
 function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -98,6 +142,396 @@ function handleAttendanceMarked(data) {
     loadFacultyAttendance();
 }
 
+// Show dashboard after login
+function showDashboard() {
+    document.getElementById('login-container').classList.add('hidden');
+    document.getElementById('dashboard-container').classList.remove('hidden');
+    showRoleView(currentRole);
+    initMobileMenu();
+    initUserMenu();
+}
+
+// Show role-specific view
+function showRoleView(role) {
+    ['studentView', 'facultyView', 'adminView'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.classList.add('hidden');
+    });
+    const roleView = document.getElementById(`${role}View`);
+    if (roleView) roleView.classList.remove('hidden');
+    showSection(role);
+}
+
+// Update user information display
+function updateUserInfo() {
+    if (currentUser) {
+        const displayName = currentUser.name || (currentRole === 'student' ? `Student ${currentUser.roll}` : `Prof. ${currentUser.roll}`);
+        const roleDisplay = currentRole.charAt(0).toUpperCase() + currentRole.slice(1);
+        
+        const userNameElement = document.getElementById('userName');
+        const userRoleElement = document.getElementById('userRole');
+        const headerUserNameElement = document.getElementById('headerUserName');
+        
+        if (userNameElement) userNameElement.textContent = displayName;
+        if (userRoleElement) userRoleElement.textContent = roleDisplay;
+        if (headerUserNameElement) headerUserNameElement.textContent = displayName.split(' ')[0];
+    }
+}
+
+// Show different sections
+function showSection(section) {
+    ['dashboardSection', 'attendanceSection', 'timetableSection', 'notificationsSection'].forEach(s => {
+        const element = document.getElementById(s);
+        if (element) element.classList.add('hidden');
+    });
+    const sectionElement = document.getElementById(`${section}Section`);
+    if (sectionElement) sectionElement.classList.remove('hidden');
+    
+    const pageTitleElement = document.getElementById('pageTitle');
+    if (pageTitleElement) {
+        pageTitleElement.textContent = section.charAt(0).toUpperCase() + section.slice(1);
+    }
+    
+    loadSectionContent(section);
+}
+
+// Load section content
+function loadSectionContent(section) {
+    if (section === 'dashboard') {
+        loadDashboardContent(currentRole);
+    } else if (section === 'attendance') {
+        loadAttendanceContent();
+    } else if (section === 'timetable') {
+        loadTimetableContent();
+    }
+}
+
+// Load dashboard content based on role
+async function loadDashboardContent(role) {
+    if (role === 'admin') {
+        // Fetch and display user counts for the admin dashboard
+        try {
+            const response = await fetch('/api/admin/users');
+            const data = await response.json();
+            if (data.success) {
+                const students = data.users.filter(u => u.role === 'student').length;
+                const faculty = data.users.filter(u => u.role === 'faculty').length;
+                document.getElementById('student-count').textContent = students;
+                document.getElementById('faculty-count').textContent = faculty;
+                // Also load the user management table
+                populateUserTable(data.users);
+            }
+        } catch (error) {
+            console.error("Failed to load user stats:", error);
+        }
+    } else if (role === 'student') {
+        // Load current and next class information for students
+        await loadStudentDashboardClasses();
+    } else if (role === 'faculty') {
+        // Load faculty dashboard information
+        await loadFacultyDashboardClasses();
+    }
+}
+
+// Load student dashboard classes
+async function loadStudentDashboardClasses() {
+    if (!currentUser || currentRole !== 'student') return;
+    
+    try {
+        const { branch, year, section } = currentUser;
+        const response = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}`);
+        const data = await response.json();
+        
+        if (data.success && data.timetable.length > 0) {
+            const currentTime = new Date();
+            const currentDay = currentTime.toLocaleDateString('en-US', { weekday: 'long' });
+            const currentTimeStr = currentTime.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                hour12: false 
+            });
+            
+            // Get today's classes
+            const todayClasses = data.timetable.filter(entry => entry.day === currentDay);
+            
+            // Sort classes by time
+            const timeSlots = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
+            todayClasses.sort((a, b) => timeSlots.indexOf(timeStringToMinutes(a.startTime)) - timeSlots.indexOf(timeStringToMinutes(b.startTime)));
+            
+            let currentClass = null;
+            let nextClass = null;
+            
+            // Find current class
+            for (let i = 0; i < todayClasses.length; i++) {
+                const classTime = todayClasses[i].startTime;
+                const classEndTime = getClassEndTime(classTime);
+                
+                if (timeStringToMinutes(currentTimeStr) >= timeStringToMinutes(classTime) && timeStringToMinutes(currentTimeStr) < timeStringToMinutes(classEndTime)) {
+                    currentClass = todayClasses[i];
+                    nextClass = todayClasses[i + 1] || null;
+                    break;
+                } else if (timeStringToMinutes(currentTimeStr) < timeStringToMinutes(classTime)) {
+                    nextClass = todayClasses[i];
+                    break;
+                }
+            }
+            
+            // Update display
+            if (currentClass) {
+                updateClassDisplay(
+                    currentClass.subject,
+                    `${currentClass.startTime} - ${getClassEndTime(currentClass.startTime)}`,
+                    `Room ${currentClass.room}`,
+                    nextClass ? nextClass.subject : 'No next class',
+                    nextClass ? `${nextClass.startTime} - ${getClassEndTime(nextClass.startTime)}` : '',
+                    nextClass ? `Room ${nextClass.room}` : ''
+                );
+            } else if (nextClass) {
+                updateClassDisplay(
+                    'No current class',
+                    '',
+                    '',
+                    nextClass.subject,
+                    `${nextClass.startTime} - ${getClassEndTime(nextClass.startTime)}`,
+                    `Room ${nextClass.room}`
+                );
+            } else {
+                updateClassDisplay('No classes today', '', '', 'No classes today', '', '');
+            }
+        } else {
+            updateClassDisplay('No timetable found', '', '', 'No timetable found', '', '');
+        }
+    } catch (error) {
+        console.error("Failed to load dashboard classes:", error);
+        updateClassDisplay('Error loading classes', '', '', 'Error loading classes', '', '');
+    }
+}
+
+// Load faculty dashboard classes
+async function loadFacultyDashboardClasses() {
+    if (!currentUser || currentRole !== 'faculty') return;
+    
+    try {
+        const response = await fetch(`/api/timetable/faculty/${currentUser.roll}`);
+        const data = await response.json();
+        
+        if (data.success && data.timetable.length > 0) {
+            const currentTime = new Date();
+            const currentDay = currentTime.toLocaleDateString('en-US', { weekday: 'long' });
+            const currentTimeStr = currentTime.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                hour12: false 
+            });
+            
+            // Get today's classes
+            const todayClasses = data.timetable.filter(entry => entry.day === currentDay);
+            
+            // Sort classes by time
+            const timeSlots = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
+            todayClasses.sort((a, b) => timeSlots.indexOf(timeStringToMinutes(a.startTime)) - timeSlots.indexOf(timeStringToMinutes(b.startTime)));
+            
+            let nextClass = null;
+            
+            // Find next class
+            for (let i = 0; i < todayClasses.length; i++) {
+                const classTime = todayClasses[i].startTime;
+                if (timeStringToMinutes(currentTimeStr) < timeStringToMinutes(classTime)) {
+                    nextClass = todayClasses[i];
+                    break;
+                }
+            }
+            
+            // Update faculty dashboard
+            const nextClassSubjectEl = document.getElementById('faculty-next-class-subject');
+            const nextClassTimeEl = document.getElementById('faculty-next-class-time');
+            const nextClassRoomEl = document.getElementById('faculty-next-class-room');
+            
+            if (nextClass) {
+                if (nextClassSubjectEl) nextClassSubjectEl.textContent = nextClass.subject;
+                if (nextClassTimeEl) nextClassTimeEl.textContent = `${nextClass.startTime} - ${getClassEndTime(nextClass.startTime)}`;
+                if (nextClassRoomEl) nextClassRoomEl.textContent = `Room ${nextClass.room}`;
+            } else {
+                if (nextClassSubjectEl) nextClassSubjectEl.textContent = 'No more classes today';
+                if (nextClassTimeEl) nextClassTimeEl.textContent = '';
+                if (nextClassRoomEl) nextClassRoomEl.textContent = '';
+            }
+            
+            // Update today's schedule
+            const scheduleEl = document.getElementById('faculty-today-schedule');
+            if (scheduleEl) {
+                if (todayClasses.length > 0) {
+                    scheduleEl.innerHTML = todayClasses.map(cls => 
+                        `<div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                            <span class="font-medium">${cls.subject}</span>
+                            <span class="text-sm text-gray-600">${cls.startTime} - ${getClassEndTime(cls.startTime)} | Room ${cls.room}</span>
+                        </div>`
+                    ).join('');
+                } else {
+                    scheduleEl.innerHTML = '<p class="text-gray-500">No classes scheduled today</p>';
+                }
+            }
+        } else {
+            const nextClassSubjectEl = document.getElementById('faculty-next-class-subject');
+            if (nextClassSubjectEl) nextClassSubjectEl.textContent = 'No timetable found';
+        }
+    } catch (error) {
+        console.error("Failed to load faculty dashboard classes:", error);
+    }
+}
+
+// Helper function to get class end time
+function getClassEndTime(startTime) {
+    const timeMap = {
+        '9:30': '10:20',
+        '10:20': '11:10',
+        '11:10': '12:00',
+        '12:00': '12:30',
+        '12:30': '1:20',
+        '1:20': '2:10',
+        '2:10': '3:00'
+    };
+    return timeMap[startTime] || 'Unknown';
+}
+
+// Helper function to update class display
+function updateClassDisplay(currentSubject, currentTime, currentRoom, nextSubject, nextTime, nextRoom) {
+    const currentSubjectEl = document.getElementById('current-class-subject');
+    const currentTimeEl = document.getElementById('current-class-time');
+    const currentRoomEl = document.getElementById('current-class-room');
+    const nextSubjectEl = document.getElementById('next-class-subject');
+    const nextTimeEl = document.getElementById('next-class-time');
+    const nextRoomEl = document.getElementById('next-class-room');
+    
+    if (currentSubjectEl) currentSubjectEl.textContent = currentSubject;
+    if (currentTimeEl) currentTimeEl.textContent = currentTime;
+    if (currentRoomEl) currentRoomEl.textContent = currentRoom;
+    if (nextSubjectEl) nextSubjectEl.textContent = nextSubject;
+    if (nextTimeEl) nextTimeEl.textContent = nextTime;
+    if (nextRoomEl) nextRoomEl.textContent = nextRoom;
+}
+
+// Helper: Convert 12-hour time string to minutes since midnight
+function timeStringToMinutes(timeStr) {
+    const [time, modifier] = timeStr.split(' ');
+    let [hours, minutes] = time.split(':').map(Number);
+    if (modifier === 'PM' && hours !== 12) hours += 12;
+    if (modifier === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+}
+
+// Centralized Time Slot Mapping
+const TIME_SLOTS = [
+    { period: 1, start: '9:30 AM', end: '10:20 AM' },
+    { period: 2, start: '10:20 AM', end: '11:10 AM' },
+    { period: 3, start: '11:10 AM', end: '12:00 PM' },
+    { period: 4, start: '12:00 PM', end: '12:50 PM' },
+    { period: 5, start: '1:50 PM', end: '2:40 PM' },
+    { period: 6, start: '2:40 PM', end: '3:30 PM' },
+    { period: 7, start: '3:30 PM', end: '4:20 PM' }
+];
+
+// Admin User Management Functions
+function populateUserTable(users) {
+    const tableBody = document.getElementById('user-list-table-body');
+    if (!tableBody) return;
+    tableBody.innerHTML = '';
+    users.forEach(user => {
+        const row = tableBody.insertRow();
+        row.innerHTML = `
+            <td class="px-6 py-4">${user.name || 'N/A'}</td>
+            <td class="px-6 py-4"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.role === 'student' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}">${user.role}</span></td>
+            <td class="px-6 py-4">${user.department || 'N/A'}</td>
+            <td class="px-6 py-4">${user.roll}</td>
+            <td class="px-6 py-4"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Active</span></td>
+            <td class="px-6 py-4 text-right text-sm font-medium">
+                <button onclick="openUserModal(event)" data-user='${JSON.stringify(user)}' class="text-indigo-600 hover:text-indigo-900"><i class="fas fa-edit"></i></button>
+                <button onclick="deleteUser('${user._id}')" class="text-red-600 hover:text-red-900 ml-4"><i class="fas fa-trash"></i></button>
+            </td>
+        `;
+    });
+}
+
+function openUserModal(event) {
+    const modal = document.getElementById('user-modal');
+    const form = document.getElementById('user-form');
+    form.reset();
+    document.getElementById('user-id').value = '';
+    
+    if (event && event.target.closest('button').dataset.user) {
+        // Edit mode
+        const user = JSON.parse(event.target.closest('button').dataset.user);
+        document.getElementById('user-modal-title').textContent = 'Edit User';
+        document.getElementById('user-id').value = user._id;
+        document.getElementById('user-name').value = user.name;
+        document.getElementById('user-email').value = user.email;
+        document.getElementById('user-role').value = user.role;
+        document.getElementById('user-department').value = user.department;
+        document.getElementById('user-roll').value = user.roll;
+        document.getElementById('user-password').placeholder = "Leave blank to keep unchanged";
+    } else {
+        // Add mode
+        document.getElementById('user-modal-title').textContent = 'Add New User';
+        document.getElementById('user-password').placeholder = "Required";
+    }
+    
+    modal.classList.remove('hidden');
+}
+
+function closeUserModal() {
+    document.getElementById('user-modal').classList.add('hidden');
+}
+
+async function handleUserFormSubmit(e) {
+    e.preventDefault();
+    const userId = document.getElementById('user-id').value;
+    const userData = {
+        name: document.getElementById('user-name').value,
+        email: document.getElementById('user-email').value,
+        role: document.getElementById('user-role').value,
+        department: document.getElementById('user-department').value,
+        roll: document.getElementById('user-roll').value,
+        password: document.getElementById('user-password').value,
+    };
+
+    const url = userId ? `/api/admin/users/${userId}` : '/api/admin/users';
+    const method = userId ? 'PUT' : 'POST';
+
+    try {
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userData)
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert(`User ${userId ? 'updated' : 'created'} successfully!`);
+            closeUserModal();
+            loadDashboardContent('admin'); // Refresh user list
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+}
+
+async function deleteUser(userId) {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+    try {
+        const response = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (result.success) {
+            alert('User deleted successfully!');
+            loadDashboardContent('admin'); // Refresh user list
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+}
+
 // Handle scan started (faculty)
 function handleScanStarted(data) {
     const statusElement = document.getElementById('bluetooth-status');
@@ -173,104 +607,9 @@ function initUserMenu() {
     }
 }
 
-// Role switching
-function switchRole(role) {
-    const studentView = document.getElementById('studentView');
-    const facultyView = document.getElementById('facultyView');
-    const adminView = document.getElementById('adminView');
-    const userName = document.getElementById('userName');
-    const userRole = document.getElementById('userRole');
-    const headerUserName = document.getElementById('headerUserName');
-    const pageTitle = document.getElementById('pageTitle');
-    
-    currentRole = role;
-    
-    if (role === 'student') {
-        studentView.classList.remove('hidden');
-        facultyView.classList.add('hidden');
-        adminView.classList.add('hidden');
-        userName.textContent = 'John Doe';
-        userRole.textContent = 'Student';
-        headerUserName.textContent = 'John';
-        pageTitle.textContent = 'Student Dashboard';
-    } else if (role === 'faculty') {
-        studentView.classList.add('hidden');
-        facultyView.classList.remove('hidden');
-        adminView.classList.add('hidden');
-        userName.textContent = 'Prof. Smith';
-        userRole.textContent = 'Faculty';
-        headerUserName.textContent = 'Prof. Smith';
-        pageTitle.textContent = 'Faculty Dashboard';
-    } else if (role === 'admin') {
-        studentView.classList.add('hidden');
-        facultyView.classList.add('hidden');
-        adminView.classList.remove('hidden');
-        userName.textContent = 'Admin User';
-        userRole.textContent = 'Administrator';
-        headerUserName.textContent = 'Admin';
-        pageTitle.textContent = 'Admin Panel';
-    }
-    
-    // Close mobile menu if open
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('overlay');
-    if (sidebar) sidebar.classList.remove('active');
-    if (overlay) overlay.classList.remove('active');
-}
-
-// Section navigation
-function showSection(section) {
-    const sections = ['dashboardSection', 'attendanceSection', 'timetableSection', 'notificationsSection'];
-    
-    sections.forEach(s => {
-        const element = document.getElementById(s);
-        if (element) {
-            element.classList.add('hidden');
-        }
-    });
-    
-    const targetSection = document.getElementById(section + 'Section');
-    if (targetSection) {
-        targetSection.classList.remove('hidden');
-    }
-    
-    // Update page title
-    const pageTitle = document.getElementById('pageTitle');
-    if (pageTitle) {
-        switch(section) {
-            case 'dashboard':
-                pageTitle.textContent = currentRole === 'student' ? 'Student Dashboard' : 
-                                       currentRole === 'faculty' ? 'Faculty Dashboard' : 'Admin Panel';
-                break;
-            case 'attendance':
-                pageTitle.textContent = 'Attendance System';
-                break;
-            case 'timetable':
-                pageTitle.textContent = 'Weekly Timetable';
-                break;
-            case 'notifications':
-                pageTitle.textContent = 'Notifications';
-                break;
-        }
-    }
-    
-    // Load section content
-    loadSectionContent(section);
-}
-
-// Load section content
-function loadSectionContent(section) {
-    switch(section) {
-        case 'attendance':
-            loadAttendanceContent();
-            break;
-        case 'timetable':
-            loadTimetableContent();
-            break;
-        case 'notifications':
-            loadNotificationsContent();
-            break;
-    }
+// Logout function
+function logout() {
+    window.location.reload();
 }
 
 // Load attendance content
@@ -279,21 +618,8 @@ function loadAttendanceContent() {
     if (!content) return;
     
     if (currentRole === 'student') {
-        content.innerHTML = `
-            <div class="text-center">
-                <h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3>
-                <p class="text-gray-600 mb-6">Use Bluetooth to mark your attendance for the current class.</p>
-                <button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
-                    <i class="fas fa-bluetooth mr-2"></i>Mark Attendance
-                </button>
-                <div id="attendance-status" class="mt-4 p-3 rounded-lg"></div>
-                <div class="mt-6">
-                    <h4 class="font-semibold mb-2">Your Attendance History</h4>
-                    <div id="student-attendance-list" class="space-y-2"></div>
-                </div>
-            </div>
-        `;
-        loadStudentAttendance('S101'); // Demo roll number
+        content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
+        loadStudentAttendanceSummary(currentUser.roll);
     } else if (currentRole === 'faculty') {
         content.innerHTML = `
             <div>
@@ -368,28 +694,28 @@ function loadAttendanceContent() {
                 
                 <!-- Legacy Interface (Hidden by default) -->
                 <div id="legacy-faculty-interface" class="hidden">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
                             <h3 class="text-xl font-bold mb-4">Legacy Attendance Session</h3>
-                            <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4">
-                                <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
-                            </button>
+                        <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4">
+                            <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
+                        </button>
                             <div id="bluetooth-status-legacy" class="p-3 bg-gray-100 rounded-lg mb-4"></div>
-                            <div>
-                                <h4 class="font-semibold mb-2">Manual Attendance</h4>
-                                <div class="flex gap-2">
-                                    <input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg">
-                                    <button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                        Add
-                                    </button>
-                                </div>
+                        <div>
+                            <h4 class="font-semibold mb-2">Manual Attendance</h4>
+                            <div class="flex gap-2">
+                                <input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg">
+                                <button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                    Add
+                                </button>
                             </div>
                         </div>
-                        <div>
-                            <h4 class="font-semibold mb-2">Discovered Devices</h4>
-                            <ul id="discovered-devices-list" class="space-y-2"></ul>
-                            <h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4>
-                            <div id="faculty-attendance-list" class="space-y-2"></div>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold mb-2">Discovered Devices</h4>
+                        <ul id="discovered-devices-list" class="space-y-2"></ul>
+                        <h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4>
+                        <div id="faculty-attendance-list" class="space-y-2"></div>
                         </div>
                     </div>
                 </div>
@@ -399,27 +725,9 @@ function loadAttendanceContent() {
         // Load faculty classes
         loadFacultyClasses();
     } else if (currentRole === 'admin') {
-        content.innerHTML = `
-            <div>
-                <h3 class="text-xl font-bold mb-4">Attendance Overview</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div class="bg-blue-50 p-4 rounded-lg text-center">
-                        <p class="text-2xl font-bold text-blue-600">85%</p>
-                        <p class="text-sm text-blue-500">Average Attendance</p>
-                    </div>
-                    <div class="bg-green-50 p-4 rounded-lg text-center">
-                        <p class="text-2xl font-bold text-green-600">1,250</p>
-                        <p class="text-sm text-green-500">Students Present Today</p>
-                    </div>
-                    <div class="bg-yellow-50 p-4 rounded-lg text-center">
-                        <p class="text-2xl font-bold text-yellow-600">18</p>
-                        <p class="text-sm text-yellow-500">Classes Completed</p>
-                    </div>
-                </div>
-                <div id="admin-attendance-list" class="space-y-2"></div>
-            </div>
-        `;
-        loadAdminAttendance();
+        content.innerHTML = `<h3 class="text-xl font-bold mb-4">View Attendance Records</h3><div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg"><div><label for="branchFilter">Branch:</label><select id="branchFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="CSE">CSE</option><option value="IT">IT</option></select></div><div><label for="yearFilter">Year:</label><select id="yearFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div><div><label for="sectionFilter">Section:</label><select id="sectionFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="A">A</option><option value="B">B</option></select></div><div><label for="dateFilter">Date:</label><input type="date" id="dateFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"></div></div><div class="flex justify-between items-center mb-4"><button id="applyFilterBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">View Attendance</button><button id="downloadBtn" class="px-4 py-2 bg-green-600 text-white rounded-lg">Download as Excel</button></div><div class="overflow-x-auto"><table class="min-w-full"><thead class="bg-gray-50"><tr><th>Roll Number</th><th>Status</th><th>Date</th><th>Timestamp</th></tr></thead><tbody id="admin-attendance-table"></tbody></table></div>`;
+        document.getElementById('applyFilterBtn').addEventListener('click', fetchAdminAttendance);
+        document.getElementById('downloadBtn').addEventListener('click', downloadAttendance);
     }
 }
 
@@ -428,81 +736,231 @@ function loadTimetableContent() {
     const content = document.getElementById('timetableContent');
     if (!content) return;
     
-    content.innerHTML = `
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead>
-                    <tr class="bg-gray-50">
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monday</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tuesday</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wednesday</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thursday</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Friday</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saturday</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                    <tr>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">8:00 AM</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-blue-50 border-l-4 border-blue-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-blue-800">Math</p>
-                                <p class="text-xs text-blue-600">Room 201</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap"></td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-blue-50 border-l-4 border-blue-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-blue-800">Math</p>
-                                <p class="text-xs text-blue-600">Room 201</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap"></td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-blue-50 border-l-4 border-blue-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-blue-800">Math</p>
-                                <p class="text-xs text-blue-600">Room 201</p>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr class="bg-gray-50">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">10:00 AM</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-purple-50 border-l-4 border-purple-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-purple-800">Data Structures</p>
-                                <p class="text-xs text-purple-600">Room 302</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-green-50 border-l-4 border-green-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-green-800">Physics</p>
-                                <p class="text-xs text-green-600">Room 105</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-purple-50 border-l-4 border-purple-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-purple-800">Data Structures</p>
-                                <p class="text-xs text-purple-600">Room 302</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-green-50 border-l-4 border-green-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-green-800">Physics</p>
-                                <p class="text-xs text-green-600">Room 105</p>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="timetable-cell bg-purple-50 border-l-4 border-purple-500 p-2 rounded cursor-pointer">
-                                <p class="font-medium text-purple-800">Data Structures</p>
-                                <p class="text-xs text-purple-600">Room 302</p>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    `;
+    content.innerHTML = '';
+    if (currentRole === 'admin') {
+        const template = document.getElementById('admin-timetable-editor');
+        const editor = template.content.cloneNode(true);
+        content.appendChild(editor);
+        initAdminTimetableEditor();
+    } else if (currentRole === 'faculty') {
+        // Show the new card-based timetable
+        const timetableDiv = document.createElement('div');
+        timetableDiv.id = 'faculty-weekly-timetable';
+        content.appendChild(timetableDiv);
+        renderFacultyWeeklyTimetable();
+    } else {
+        content.innerHTML = `<div class="overflow-x-auto"><table class="w-full"><thead><tr class="bg-gray-50"><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tuesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Wednesday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thursday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Friday</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Saturday</th></tr></thead><tbody id="timetable-body" class="bg-white divide-y divide-gray-200"><tr><td colspan="7" class="text-center p-4">Loading...</td></tr></tbody></table></div>`;
+        fetchUserTimetable();
+    }
+}
+
+// Fetch and display user timetable
+async function fetchUserTimetable() {
+    if (!currentUser) return;
+    let url = '';
+    if (currentRole === 'student') {
+        const { branch, year, section } = currentUser;
+        url = `/api/timetable/student?branch=${branch}&year=${year}&section=${section}`;
+    } else if (currentRole === 'faculty') {
+        url = `/api/timetable/faculty/${currentUser.roll}`;
+    }
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        const tableBody = document.getElementById('timetable-body');
+        tableBody.innerHTML = '';
+        if (data.success && data.timetable.length > 0) {
+            // Get unique faculty IDs to fetch names
+            const facultyIds = [...new Set(data.timetable.map(entry => entry.facultyId).filter(id => id))];
+            let facultyNames = {};
+            
+            // Fetch faculty names if we're showing student timetable
+            if (currentRole === 'student' && facultyIds.length > 0) {
+                try {
+                    const facultyResponse = await fetch('/api/faculty/names', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ facultyIds })
+                    });
+                    const facultyData = await facultyResponse.json();
+                    if (facultyData.success) {
+                        facultyNames = facultyData.facultyNames;
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch faculty names:", error);
+                }
+            }
+            
+            const groupedByTime = data.timetable.reduce((acc, entry) => {
+                if (!acc[entry.startTime]) acc[entry.startTime] = {};
+                acc[entry.startTime][entry.day] = entry;
+                return acc;
+            }, {});
+            for (const time in groupedByTime) {
+                const row = tableBody.insertRow();
+                row.innerHTML = `<td class="px-6 py-4 font-medium">${time}</td>`;
+                const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                days.forEach(day => {
+                    const cell = row.insertCell();
+                    cell.className = 'px-6 py-4';
+                    const entry = groupedByTime[time][day];
+                    if (entry) {
+                        const facultyDisplay = currentRole === 'student' && entry.facultyId ? 
+                            (facultyNames[entry.facultyId] || entry.facultyId) : entry.facultyId || '';
+                        cell.innerHTML = `<div class="timetable-cell bg-indigo-50 border-l-4 border-indigo-500 p-2 rounded"><p class="font-semibold text-indigo-800">${entry.subject}</p><p class="text-xs text-gray-600">${entry.room}</p>${currentRole === 'student' && facultyDisplay ? `<p class="text-xs text-gray-500">${facultyDisplay}</p>` : ''}</div>`;
+                    }
+                });
+            }
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center p-4">No timetable found.</td></tr>`;
+        }
+    } catch (error) { 
+        console.error("Failed to fetch timetable:", error); 
+    }
+}
+
+// Render the new faculty weekly timetable (card-based)
+async function renderFacultyWeeklyTimetable() {
+    const timetableDiv = document.getElementById('faculty-weekly-timetable');
+    if (!timetableDiv) return;
+    timetableDiv.innerHTML = '';
+    timetableDiv.className = 'grid grid-cols-1 md:grid-cols-6 gap-4';
+
+    // Days of week (Monday to Saturday)
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    // Fetch timetable
+    let timetable = [];
+    try {
+        const response = await fetch(`/api/timetable/faculty/${currentUser.roll}`);
+        const data = await response.json();
+        if (data.success && data.timetable.length > 0) {
+            timetable = data.timetable;
+        }
+    } catch (e) {
+        timetableDiv.innerHTML = '<p class="text-red-500">Failed to load timetable.</p>';
+        return;
+    }
+    // Group by day
+    const grouped = {};
+    days.forEach(day => grouped[day] = []);
+    timetable.forEach(entry => {
+        if (grouped[entry.day]) grouped[entry.day].push(entry);
+    });
+    // Sort each day's classes by start time
+    const timeOrder = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
+    days.forEach(day => {
+        grouped[day].sort((a, b) => timeOrder.indexOf(timeStringToMinutes(a.startTime)) - timeOrder.indexOf(timeStringToMinutes(b.startTime)));
+    });
+    // Render columns
+    days.forEach(day => {
+        const col = document.createElement('div');
+        col.className = 'bg-gray-50 rounded-lg shadow p-2 flex flex-col';
+        col.innerHTML = `<div class="text-center font-bold text-lg py-2 border-b mb-2">${day}</div>`;
+        if (grouped[day].length === 0) {
+            col.innerHTML += '<div class="text-gray-400 text-center py-4">No Classes</div>';
+        } else {
+            grouped[day].forEach(cls => {
+                col.innerHTML += `
+                <div class="mb-3 p-3 rounded-lg shadow-sm border-l-4" style="border-color: #6366f1; background: #f8fafc;">
+                    <div class="font-semibold text-indigo-800">${cls.subject}</div>
+                    <div class="text-xs text-gray-600">${cls.startTime} - ${getClassEndTime(cls.startTime)}</div>
+                    <div class="text-xs text-gray-500">Room ${cls.room}</div>
+                </div>`;
+            });
+        }
+        timetableDiv.appendChild(col);
+    });
+}
+
+// Admin Timetable Editor Functions
+function initAdminTimetableEditor() {
+    const gridBody = document.getElementById('admin-timetable-grid-body');
+    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    gridBody.innerHTML = '';
+    days.forEach(day => {
+        const row = document.createElement('tr');
+        row.className = "bg-white border-b";
+        row.innerHTML = `<th class="px-2 py-2 font-medium text-gray-900">${day}</th>`;
+        let cellContent = '';
+        for (let i = 1; i <= 7; i++) {
+            cellContent += `<td class="p-1"><input class="interactive-timetable-input" placeholder="Subject" data-day="${day}" data-period="${i}"><input class="interactive-timetable-input" placeholder="Faculty ID" data-day="${day}" data-period="${i}"><input class="interactive-timetable-input" placeholder="Room" data-day="${day}" data-period="${i}"></td>`;
+            if (i === 4) cellContent += `<td class="bg-gray-100 text-center text-xs font-semibold">LUNCH</td>`;
+        }
+        row.innerHTML += cellContent;
+        gridBody.appendChild(row);
+    });
+    document.getElementById('admin-view-timetable-btn').addEventListener('click', handleAdminViewTimetable);
+    document.getElementById('admin-save-timetable-btn').addEventListener('click', handleAdminSaveTimetable);
+}
+
+async function handleAdminViewTimetable() {
+    const branch = document.getElementById('admin-branch-select').value;
+    const year = document.getElementById('admin-year-select').value;
+    const section = document.getElementById('admin-section-select').value;
+    document.querySelectorAll('.interactive-timetable-input').forEach(input => input.value = '');
+    try {
+        const response = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}`);
+        const data = await response.json();
+        if (data.success && data.timetable) {
+            const periodMap = { '9:30': 1, '10:20': 2, '11:10': 3, '12:00': 4, '12:30': 5, '1:20': 6, '2:10': 7 };
+            data.timetable.forEach(slot => {
+                const period = periodMap[slot.startTime];
+                if (period) {
+                    const sel = (p, placeholder) => `input[data-day="${slot.day.toUpperCase()}"][data-period="${p}"][placeholder="${placeholder}"]`;
+                    document.querySelector(sel(period, "Subject")).value = slot.subject;
+                    document.querySelector(sel(period, "Faculty ID")).value = slot.facultyId;
+                    document.querySelector(sel(period, "Room")).value = slot.room;
+                }
+            });
+            alert('Timetable loaded!');
+        } else { 
+            alert('No timetable found.'); 
+        }
+    } catch (error) {
+        console.error('Failed to fetch timetable:', error);
+        alert('Error loading timetable.');
+    }
+}
+
+async function handleAdminSaveTimetable() {
+    if (!confirm('Are you sure you want to overwrite this timetable?')) return;
+    const branch = document.getElementById('admin-branch-select').value;
+    const year = document.getElementById('admin-year-select').value;
+    const section = document.getElementById('admin-section-select').value;
+    const timetableData = [];
+    const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '12:30', 6: '1:20', 7: '2:10' };
+    document.querySelectorAll('#admin-timetable-grid-body tr').forEach(row => {
+        const day = row.querySelector('th').textContent;
+        for (let period = 1; period <= 7; period++) {
+            const sel = (p, placeholder) => `input[data-day="${day}"][data-period="${p}"][placeholder="${placeholder}"]`;
+            const subject = row.querySelector(sel(period, "Subject"))?.value.trim();
+            if (subject) {
+                timetableData.push({
+                    day: day.charAt(0).toUpperCase() + day.slice(1).toLowerCase(),
+                    startTime: timeMap[period],
+                    subject,
+                    facultyId: row.querySelector(sel(period, "Faculty ID")).value.trim(),
+                    room: row.querySelector(sel(period, "Room")).value.trim()
+                });
+            }
+        }
+    });
+    try {
+        const response = await fetch('/api/admin/timetable/bulk-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch, year, section, timetableEntries: timetableData })
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert('Timetable saved successfully!');
+        } else { 
+            throw new Error(result.message || 'Failed to save.'); 
+        }
+    } catch (error) {
+        console.error('Failed to save timetable:', error);
+        alert(`Error saving timetable: ${error.message}`);
+    }
 }
 
 // Load notifications content
@@ -771,6 +1229,33 @@ function loadStudentAttendance(roll) {
     });
 }
 
+// Load student attendance summary
+async function loadStudentAttendanceSummary(roll) {
+    try {
+        const response = await fetch(`/api/student/attendance/summary/${roll}`);
+        const data = await response.json();
+        if (data.success) {
+            document.getElementById('overall-percentage').textContent = `${data.overall.percentage}%`;
+            document.getElementById('overall-details').textContent = `Attended ${data.overall.attended} of ${data.overall.total} classes`;
+            const subjectListDiv = document.getElementById('subject-wise-list');
+            subjectListDiv.innerHTML = '';
+            if (Object.keys(data.subjectWise).length === 0) {
+                subjectListDiv.innerHTML = `<p class="text-gray-500">No timetable data for percentage calculation.</p>`;
+                return;
+            }
+            for (const subject in data.subjectWise) {
+                const stats = data.subjectWise[subject];
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-lg shadow p-4';
+                card.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold">${subject}</span><span>${stats.attended}/${stats.total}</span></div><div class="w-full bg-gray-200 rounded-full h-2.5 mt-2"><div class="bg-indigo-600 h-2.5 rounded-full" style="width: ${stats.percentage}%"></div></div><p class="text-right text-lg font-semibold mt-1">${stats.percentage}%</p>`;
+                subjectListDiv.appendChild(card);
+            }
+        }
+    } catch (error) { 
+        console.error("Failed to load summary:", error); 
+    }
+}
+
 function loadFacultyAttendance() {
     fetch('/api/attendance/today')
     .then(response => response.json())
@@ -823,11 +1308,40 @@ function loadAdminAttendance() {
     });
 }
 
-// Logout function
-function logout() {
-    if (confirm('Are you sure you want to logout?')) {
-        window.location.href = '/classsyncc.html';
+// Admin attendance functions
+async function fetchAdminAttendance() {
+    const query = new URLSearchParams({
+        branch: document.getElementById('branchFilter').value,
+        year: document.getElementById('yearFilter').value,
+        section: document.getElementById('sectionFilter').value,
+        date: document.getElementById('dateFilter').value
+    }).toString();
+    try {
+        const response = await fetch(`/api/admin/attendance?${query}`);
+        const data = await response.json();
+        const tableBody = document.getElementById('admin-attendance-table');
+        tableBody.innerHTML = '';
+        if (data.success && data.attendance.length > 0) {
+            data.attendance.forEach(rec => {
+                const row = tableBody.insertRow();
+                row.innerHTML = `<td class="px-6 py-4">${rec.roll}</td><td class="px-6 py-4">${rec.status}</td><td class="px-6 py-4">${rec.date}</td><td class="px-6 py-4">${new Date(rec.timestamp).toLocaleString()}</td>`;
+            });
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="4" class="text-center py-4">No records found.</td></tr>`;
+        }
+    } catch (error) { 
+        console.error("Failed to fetch admin attendance:", error); 
     }
+}
+
+function downloadAttendance() {
+    const query = new URLSearchParams({
+        branch: document.getElementById('branchFilter').value,
+        year: document.getElementById('yearFilter').value,
+        section: document.getElementById('sectionFilter').value,
+        date: document.getElementById('dateFilter').value
+    }).toString();
+    window.open(`/api/admin/attendance/export?${query}`, '_blank');
 }
 
 // Enhanced Faculty Attendance Functions
@@ -1048,34 +1562,18 @@ async function updateAttendanceRecords() {
         
         if (data.success) {
             const recordsDiv = document.getElementById('attendance-records');
-            const session = data.session;
+            recordsDiv.innerHTML = '';
             
-            recordsDiv.innerHTML = `
-                <div class="mb-4 p-3 bg-blue-50 rounded-lg">
-                    <h5 class="font-semibold text-blue-800">Session Summary</h5>
-                    <p class="text-sm text-blue-600">Total Records: ${session.attendanceRecords.length}</p>
-                </div>
-            `;
-            
-            // Group records by student
-            const studentRecords = {};
-            session.attendanceRecords.forEach(record => {
-                if (!studentRecords[record.studentRoll]) {
-                    studentRecords[record.studentRoll] = [];
-                }
-                studentRecords[record.studentRoll].push(record);
-            });
-            
-            Object.entries(studentRecords).forEach(([studentRoll, records]) => {
-                const studentDiv = document.createElement('div');
-                studentDiv.className = 'p-3 border border-gray-200 rounded-lg';
-                studentDiv.innerHTML = `
-                    <div class="font-medium mb-2">${studentRoll}</div>
-                    <div class="text-sm text-gray-600">
-                        ${records.map(r => `Period ${r.period}: ${r.status} (${r.method})`).join(', ')}
-                    </div>
+            data.session.attendanceRecords.forEach(record => {
+                const recordDiv = document.createElement('div');
+                recordDiv.className = 'p-3 border border-gray-200 rounded-lg';
+                recordDiv.innerHTML = `
+                    <strong>Student:</strong> ${record.studentRoll} | 
+                    <strong>Period:</strong> ${record.period} | 
+                    <strong>Status:</strong> ${record.status} | 
+                    <strong>Method:</strong> ${record.method}
                 `;
-                recordsDiv.appendChild(studentDiv);
+                recordsDiv.appendChild(recordDiv);
             });
         }
     } catch (error) {
@@ -1083,22 +1581,18 @@ async function updateAttendanceRecords() {
     }
 }
 
-// Initialize everything when page loads
+// Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('ClassSync Integrated Dashboard loaded');
+    console.log('ClassSync App Initialized');
+    // Event listeners for modal and user management that are always present
+    const cancelUserBtn = document.getElementById('cancel-user-btn');
+    const userForm = document.getElementById('user-form');
     
-    // Initialize mobile menu
-    initMobileMenu();
+    if (cancelUserBtn) {
+        cancelUserBtn.addEventListener('click', closeUserModal);
+    }
     
-    // Initialize user menu
-    initUserMenu();
-    
-    // Initialize WebSocket
-    initWebSocket();
-    
-    // Start with student view
-    switchRole('student');
-    
-    // Show dashboard section by default
-    showSection('dashboard');
+    if (userForm) {
+        userForm.addEventListener('submit', handleUserFormSubmit);
+    }
 }); 
