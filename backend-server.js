@@ -494,12 +494,17 @@ app.post('/api/faculty/attendance/session', async (req, res) => {
  */
 app.get('/api/subjects', async (req, res) => {
     try {
-        const { branch, year, section, semester } = req.query;
-        const filter = {};
-        if (branch) filter.branch = branch;
-        if (year) filter.year = Number(year);
-        if (section) filter.section = section;
-        if (semester) filter.semester = semester;
+        const { branch, year, semester } = req.query;
+        // Require all three filters to get subjects, this ensures accuracy
+        if (!branch || !year || !semester) {
+            return res.json({ success: true, subjects: [] });
+        }
+        
+        const filter = {
+            branch,
+            year: Number(year),
+            semester
+        };
 
         const subjects = await Timetable.distinct('subject', filter);
         res.json({ success: true, subjects });
@@ -515,7 +520,7 @@ app.get('/api/subjects', async (req, res) => {
  */
 app.post('/api/admin/attendance/summary', async (req, res) => {
     try {
-        const { date, periods, branch, year, section, subject } = req.body;
+        const { date, periods, branch, year, section, semester, subject } = req.body;
         if (!date || !periods || !Array.isArray(periods)) {
             return res.status(400).json({ success: false, message: 'Date and periods are required.' });
         }
@@ -524,10 +529,11 @@ app.post('/api/admin/attendance/summary', async (req, res) => {
         if (branch) classFilter.branch = branch;
         if (year) classFilter.year = Number(year);
         if (section) classFilter.section = section;
+        if (semester) classFilter.semester = semester; // Now uses semester to find students
 
         const classes = await User.aggregate([
             { $match: classFilter },
-            { $group: { _id: { branch: '$branch', year: '$year', section: '$section' } } },
+            { $group: { _id: { branch: '$branch', year: '$year', section: '$section', semester: '$semester' } } },
             { $sort: { '_id.year': 1, '_id.branch': 1, '_id.section': 1 } }
         ]);
 
@@ -535,10 +541,10 @@ app.post('/api/admin/attendance/summary', async (req, res) => {
         const absenteesByClass = {};
 
         for (const [index, klass] of classes.entries()) {
-            const { branch, year, section } = klass._id;
+            const { branch, year, section, semester } = klass._id;
             if (!branch || !year || !section) continue;
 
-            const studentQuery = { role: 'student', branch, year, section };
+            const studentQuery = { role: 'student', branch, year, section, semester };
             const allStudents = await User.find(studentQuery).select('roll');
             const totalStrength = allStudents.length;
             if (totalStrength === 0) continue;
@@ -552,19 +558,12 @@ app.post('/api/admin/attendance/summary', async (req, res) => {
 
             const presentRolls = await Attendance.distinct('roll', attendanceFilter);
             const totalPresent = presentRolls.length;
-
+            
             const allRolls = allStudents.map(s => s.roll);
             const absenteeRolls = allRolls.filter(roll => !presentRolls.includes(roll));
 
             const className = `${year} ${branch}-${section}`;
-            summaryData.push({
-                sno: index + 1,
-                className,
-                totalStrength,
-                totalPresent,
-                totalAbsentees: totalStrength - totalPresent,
-                attendancePercent: totalStrength > 0 ? Math.round((totalPresent / totalStrength) * 100) : 0,
-            });
+            summaryData.push({ sno: index + 1, className, totalStrength, totalPresent, totalAbsentees: totalStrength - totalPresent, attendancePercent: totalStrength > 0 ? Math.round((totalPresent / totalStrength) * 100) : 0 });
             absenteesByClass[className] = absenteeRolls;
         }
 

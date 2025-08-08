@@ -1130,18 +1130,20 @@ function initializeAdminAttendanceDashboard() {
         `;
     }
 
-    // Populate static dropdowns (can be fetched from DB in the future if needed)
-    populateSelect('admin-branch-select', ['IT', 'CSE', 'ECE', 'MECH', 'CIVIL', 'EEE']);
+    // Populate dropdowns with static options
+    populateSelect('admin-semester-select', ['I Semester', 'II Semester']);
+    populateSelect('admin-branch-select', ['IT', 'CSE', 'ECE', 'MECH', 'CIVIL', 'EEE', 'MCA']);
     populateSelect('admin-year-select', ['1', '2', '3', '4']);
-    populateSelect('admin-section-select', ['A', 'B', 'C', 'D']);
+    populateSelect('admin-section-select', ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
     
-    // Setup event listeners
+    // Setup event listeners for ALL filters that affect the subject list
+    document.getElementById('admin-semester-select').addEventListener('change', updateAvailableSubjects);
     document.getElementById('admin-branch-select').addEventListener('change', updateAvailableSubjects);
     document.getElementById('admin-year-select').addEventListener('change', updateAvailableSubjects);
     document.getElementById('admin-view-btn').addEventListener('click', handleAdminViewClick);
     document.getElementById('admin-download-summary-btn')?.addEventListener('click', handleAdminDownloadClick);
-
-    // Initial population of subjects
+    
+    // Initial call to populate subjects if values are pre-selected
     updateAvailableSubjects();
 }
 
@@ -1157,21 +1159,28 @@ function populateSelect(elementId, options) {
 }
 
 async function updateAvailableSubjects() {
+    const semester = document.getElementById('admin-semester-select').value;
     const branch = document.getElementById('admin-branch-select').value;
     const year = document.getElementById('admin-year-select').value;
     const subjectSelect = document.getElementById('admin-subject-select');
     
-    if (!branch || !year) {
-        subjectSelect.innerHTML = '<option value="">Select Branch & Year first</option>';
+    // Only fetch subjects if all three dependent filters have a value
+    if (!semester || !branch || !year) {
+        subjectSelect.innerHTML = '<option value="">-- Select Semester, Branch & Year --</option>';
         return;
     }
+    
+    subjectSelect.innerHTML = '<option value="">Loading...</option>';
 
     try {
-        const query = new URLSearchParams({ branch, year }).toString();
+        const query = new URLSearchParams({ semester, branch, year }).toString();
         const response = await fetch(`/api/subjects?${query}`);
         const result = await response.json();
-        if (result.success) {
+        
+        if (result.success && result.subjects.length > 0) {
             populateSelect('admin-subject-select', result.subjects);
+        } else {
+            subjectSelect.innerHTML = '<option value="">-- No Subjects Found --</option>';
         }
     } catch (error) {
         console.error("Failed to fetch subjects:", error);
@@ -1259,6 +1268,7 @@ function getAdminFilters() {
     return {
         date,
         periods,
+        semester: document.getElementById('admin-semester-select').value,
         branch: document.getElementById('admin-branch-select').value,
         year: document.getElementById('admin-year-select').value,
         section: document.getElementById('admin-section-select').value,
