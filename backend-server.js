@@ -278,8 +278,13 @@ app.get('/api/timetable/student', async (req, res) => {
 
 app.get('/api/timetable/faculty/:facultyId', async (req, res) => {
     try {
+        const usersCollection = getCollection(COLLECTIONS.USERS);
         const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
-        const filter = { facultyId: req.params.facultyId };
+        const facultyId = req.params.facultyId;
+        const facultyUser = await usersCollection.findOne({ roll: facultyId, role: 'faculty' });
+        const candidateIds = [facultyId];
+        if (facultyUser && facultyUser.name) candidateIds.push(facultyUser.name);
+        const filter = { facultyId: { $in: candidateIds } };
         if (req.query.semester) filter.semester = req.query.semester;
         const timetable = await timetableCollection.find(filter).toArray();
         res.json({ success: true, timetable });
@@ -364,7 +369,11 @@ app.get('/api/faculty/classes/:facultyId', async (req, res) => {
     const { facultyId } = req.params;
     const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
     // Pull faculty's timetable rows
-    const timetable = await timetableCollection.find({ facultyId }).toArray();
+    const usersCollection = getCollection(COLLECTIONS.USERS);
+    const facultyUser = await usersCollection.findOne({ roll: facultyId, role: 'faculty' });
+    const candidateIds = [facultyId];
+    if (facultyUser && facultyUser.name) candidateIds.push(facultyUser.name);
+    const timetable = await timetableCollection.find({ facultyId: { $in: candidateIds } }).toArray();
 
     if (!timetable || timetable.length === 0) {
       return res.json({ success: true, classes: [] });
