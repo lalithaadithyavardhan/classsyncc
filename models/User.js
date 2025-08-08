@@ -1,49 +1,17 @@
 const mongoose = require('mongoose');
 
-// User Schema for all roles: student, faculty, admin
-const UserSchema = new mongoose.Schema({
-  role: {
-    type: String,
-    enum: ['student', 'faculty', 'admin'],
-    required: true,
-    comment: 'User role: student, faculty, or admin'
-  },
-  name: {
-    type: String,
-    required: true,
-    comment: 'Full name of the user'
-  },
-  password: {
-    type: String,
-    required: true,
-    comment: 'Hashed password'
-  },
-  // Unique identifier for students and faculty
-  rollNumber: {
-    type: String,
-    unique: true,
-    sparse: true,
-    comment: 'Student roll number (unique)'
-  },
-  facultyId: {
-    type: String,
-    unique: true,
-    sparse: true,
-    comment: 'Faculty ID (unique)'
-  },
-  // Student-specific fields
-  branch: {
-    type: String,
-    comment: 'Branch (for students)'
-  },
-  year: {
-    type: Number,
-    comment: 'Year of study (for students)'
-  },
-  section: {
-    type: String,
-    comment: 'Section (for students)'
-  }
-}, { timestamps: true });
+const userSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    email: { type: String, unique: true, sparse: true }, // unique but allows null
+    role: { type: String, required: true, enum: ['student', 'faculty', 'admin'] },
+    department: String,
+    roll: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    branch: String,
+    year: Number,
+    section: String,
+    semester: String,
+    createdAt: { type: Date, default: Date.now }
+});
 
-module.exports = mongoose.model('User', UserSchema); 
+module.exports = mongoose.model('User', userSchema); 

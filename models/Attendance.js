@@ -1,33 +1,22 @@
 const mongoose = require('mongoose');
 
-// Attendance Schema for attendance records
-const AttendanceSchema = new mongoose.Schema({
-  roll: {
-    type: String,
-    required: true,
-    comment: 'Student roll number'
-  },
-  date: {
-    type: String,
-    required: true,
-    comment: 'Date of attendance (YYYY-MM-DD)'
-  },
-  status: {
-    type: String,
-    required: true,
-    comment: 'Attendance status (e.g., Present)'
-  },
-  timestamp: {
-    type: Date,
-    default: Date.now,
-    comment: 'Timestamp of attendance marking'
-  },
-  classId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Timetable',
-    required: true,
-    comment: 'Reference to the class (Timetable)'
-  }
-}, { timestamps: true });
+const attendanceSchema = new mongoose.Schema({
+    roll: { type: String, required: true },
+    date: { type: String, required: true },
+    status: { type: String, required: true },
+    period: Number,
+    subject: String,
+    method: String,
+    deviceId: String,
+    rssi: Number,
+    timestamp: { type: Date, default: Date.now },
+    branch: String,
+    year: Number,
+    section: String,
+    facultyId: String
+});
 
-module.exports = mongoose.model('Attendance', AttendanceSchema); 
+// Create a compound index to prevent duplicate entries for the same student, date, and period
+attendanceSchema.index({ roll: 1, date: 1, period: 1 }, { unique: true, sparse: true });
+
+module.exports = mongoose.model('Attendance', attendanceSchema, 'attendances'); 
