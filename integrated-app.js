@@ -1115,67 +1115,48 @@ function initializeAdminAttendanceDashboard() {
     // Set default date to today
     document.getElementById('admin-date-select').value = new Date().toISOString().split('T')[0];
     
-    // Populate period checkboxes (this part is static)
+    // Populate static period checkboxes
     const periodsContainer = document.getElementById('admin-periods-checkboxes');
     if (periodsContainer) {
         periodsContainer.innerHTML = '';
         for (let i = 1; i <= 7; i++) {
-            periodsContainer.innerHTML += `
-                <label class="flex items-center gap-2">
-                    <input type="checkbox" value="${i}" class="admin-period-cb h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                    <span>Period ${i}</span>
-                </label>
-            `;
+            periodsContainer.innerHTML += `<label class="flex items-center gap-2"><input type="checkbox" value="${i}" class="admin-period-cb h-4 w-4"><span>P${i}</span></label>`;
         }
     }
 
-    // Define the filter elements
-    const semesterSelect = document.getElementById('admin-semester-select');
+    // Define all filter elements
     const branchSelect = document.getElementById('admin-branch-select');
     const yearSelect = document.getElementById('admin-year-select');
     const sectionSelect = document.getElementById('admin-section-select');
-    const subjectSelect = document.getElementById('admin-subject-select');
-    const viewBtn = document.getElementById('admin-view-btn');
-
+    const semesterSelect = document.getElementById('admin-semester-select');
+    
     // Setup the cascading event listeners
-    semesterSelect.addEventListener('change', () => {
-        populateFilterDropdown('admin-branch-select', { semester: semesterSelect.value });
-    });
-    branchSelect.addEventListener('change', () => {
-        populateFilterDropdown('admin-year-select', { semester: semesterSelect.value, branch: branchSelect.value });
-    });
-    yearSelect.addEventListener('change', () => {
-        populateFilterDropdown('admin-section-select', { semester: semesterSelect.value, branch: branchSelect.value, year: yearSelect.value });
-    });
-    sectionSelect.addEventListener('change', () => {
-        populateFilterDropdown('admin-subject-select', { semester: semesterSelect.value, branch: branchSelect.value, year: yearSelect.value, section: sectionSelect.value });
-    });
+    branchSelect.addEventListener('change', () => populateFilterDropdown('admin-year-select', { branch: branchSelect.value }));
+    yearSelect.addEventListener('change', () => populateFilterDropdown('admin-section-select', { branch: branchSelect.value, year: yearSelect.value }));
+    sectionSelect.addEventListener('change', () => populateFilterDropdown('admin-semester-select', { branch: branchSelect.value, year: yearSelect.value, section: sectionSelect.value }));
 
     // Add listener for the view button
-    if(viewBtn) {
-       viewBtn.addEventListener('click', handleAdminViewClick);
-    }
+    document.getElementById('admin-view-btn')?.addEventListener('click', handleAdminViewClick);
 
-    // Start the cascade by populating the first filter (Semesters)
-    populateFilterDropdown('admin-semester-select', {});
+    // Start the cascade by populating the very first filter (Branches)
+    populateFilterDropdown('admin-branch-select', {});
 }
 
 // Generic function to populate any filter dropdown
 async function populateFilterDropdown(elementId, filters) {
     const selectElement = document.getElementById(elementId);
-    const field = elementId.replace('admin-', '').replace('-select', ''); // e.g., 'admin-branch-select' -> 'branch'
+    const field = elementId.replace('admin-', '').replace('-select', ''); 
     
-    // Reset subsequent dropdowns in the chain
     resetSubsequentFilters(field);
-
     selectElement.innerHTML = '<option value="">Loading...</option>';
     selectElement.disabled = true;
 
     try {
         const query = new URLSearchParams({ field, ...filters }).toString();
         const response = await fetch(`/api/filter-options?${query}`);
+        if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
+        
         const result = await response.json();
-
         if (result.success) {
             selectElement.innerHTML = '<option value="">All</option>';
             if (result.options.length > 0) {
@@ -1183,8 +1164,10 @@ async function populateFilterDropdown(elementId, filters) {
                     selectElement.innerHTML += `<option value="${option}">${option}</option>`;
                 });
             } else {
-                selectElement.innerHTML = '<option value="">No options found</option>';
+                selectElement.innerHTML = '<option value="">-- No options --</option>';
             }
+        } else {
+             throw new Error(result.message);
         }
     } catch (error) {
         selectElement.innerHTML = '<option value="">Error</option>';
@@ -1196,7 +1179,8 @@ async function populateFilterDropdown(elementId, filters) {
 
 // Helper function to reset child filters when a parent filter changes
 function resetSubsequentFilters(changedField) {
-    const filterChain = ['semester', 'branch', 'year', 'section', 'subject'];
+    // The chain is now shorter without 'subject'
+    const filterChain = ['branch', 'year', 'section', 'semester'];
     const startIndex = filterChain.indexOf(changedField) + 1;
     
     for (let i = startIndex; i < filterChain.length; i++) {
@@ -1204,11 +1188,12 @@ function resetSubsequentFilters(changedField) {
         const selectElement = document.getElementById(elementId);
         if (selectElement) {
             selectElement.innerHTML = `<option value="">-- Select ${filterChain[i-1]} first --</option>`;
+            selectElement.disabled = true;
         }
     }
 }
 
-// This function is now much simpler as it just reads the final values
+// This function now gets filters without 'subject'
 function getAdminFilters() {
     const periods = Array.from(document.querySelectorAll('.admin-period-cb:checked')).map(cb => Number(cb.value));
     const date = document.getElementById('admin-date-select').value;
@@ -1221,11 +1206,10 @@ function getAdminFilters() {
     return {
         date,
         periods,
-        semester: document.getElementById('admin-semester-select').value,
         branch: document.getElementById('admin-branch-select').value,
         year: document.getElementById('admin-year-select').value,
         section: document.getElementById('admin-section-select').value,
-        subject: document.getElementById('admin-subject-select').value,
+        semester: document.getElementById('admin-semester-select').value,
     };
 }
 

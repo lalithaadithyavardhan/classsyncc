@@ -274,7 +274,7 @@
                         </div>
 
                         <div class="p-4 bg-gray-50 rounded-lg border">
-                            <div class="grid grid-cols-1 md:grid-cols-6 gap-x-6 gap-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-5 gap-x-6 gap-y-4">
                                 <div>
                                     <label for="admin-semester-select" class="block text-sm font-medium">Semester</label>
                                     <select id="admin-semester-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
@@ -292,20 +292,16 @@
                                     <select id="admin-section-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
                                 </div>
                                 <div>
-                                    <label for="admin-subject-select" class="block text-sm font-medium">Subject</label>
-                                    <select id="admin-subject-select" class="mt-1 block w-full py-2 px-3 border rounded-md">
-                                        <option value="">-- Select Other Filters First --</option>
-                                    </select>
-                                </div>
-                                <div>
                                     <label for="admin-date-select" class="block text-sm font-medium">Date</label>
                                     <input type="date" id="admin-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md">
                                 </div>
                             </div>
                             <div class="mt-4 pt-4 border-t">
                                 <div class="flex justify-between items-center">
-                                    <label class="block text-sm font-medium">Periods</label>
-                                    <div id="admin-periods-checkboxes" class="flex flex-wrap gap-x-6 gap-y-2">
+                                    <div class="flex items-center">
+                                         <label class="block text-sm font-medium mr-4">Periods:</label>
+                                        <div id="admin-periods-checkboxes" class="flex flex-wrap gap-x-6 gap-y-2">
+                                            </div>
                                     </div>
                                     <button id="admin-view-btn" class="px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">
                                         <i class="fas fa-eye mr-2"></i>View

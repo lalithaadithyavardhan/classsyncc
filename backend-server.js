@@ -553,16 +553,17 @@ app.get('/api/subjects', async (req, res) => {
  */
 app.post('/api/admin/attendance/summary', async (req, res) => {
     try {
-        const { date, periods, branch, year, section, semester, subject } = req.body;
-        if (!date || !periods || !Array.isArray(periods)) {
-            return res.status(400).json({ success: false, message: 'Date and periods are required.' });
+        // The 'subject' filter is no longer needed here
+        const { date, periods, branch, year, section, semester } = req.body;
+        if (!date || !periods || !Array.isArray(periods) || periods.length === 0) {
+            return res.status(400).json({ success: false, message: 'Date and at least one period are required.' });
         }
 
         const classFilter = { role: 'student' };
         if (branch) classFilter.branch = branch;
         if (year) classFilter.year = Number(year);
         if (section) classFilter.section = section;
-        if (semester) classFilter.semester = semester; // Now uses semester to find students
+        if (semester) classFilter.semester = semester;
 
         const classes = await User.aggregate([
             { $match: classFilter },
@@ -582,12 +583,12 @@ app.post('/api/admin/attendance/summary', async (req, res) => {
             const totalStrength = allStudents.length;
             if (totalStrength === 0) continue;
 
+            // The attendance filter is now simpler, without 'subject'
             const attendanceFilter = {
                 branch, year, section, date,
                 period: { $in: periods },
                 status: { $regex: /present/i }
             };
-            if (subject) attendanceFilter.subject = subject;
 
             const presentRolls = await Attendance.distinct('roll', attendanceFilter);
             const totalPresent = presentRolls.length;
