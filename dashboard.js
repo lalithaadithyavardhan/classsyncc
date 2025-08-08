@@ -640,6 +640,7 @@ function loadAttendanceContent() {
                                 <select id="class-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
                                     <option value="">Select Subject</option>
                                 </select>
+                                <p id="class-select-helper" class="text-xs text-gray-500 mt-1">Filtered by faculty mapping (branch/year/section/semester)</p>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Periods:</label>
@@ -791,12 +792,15 @@ async function fetchUserTimetable() {
                 }
             }
             
+            // Normalize and order time slots per admin schedule
+            const order = ['9:30','10:20','11:10','12:00','1:50','2:40','3:30'];
             const groupedByTime = data.timetable.reduce((acc, entry) => {
-                if (!acc[entry.startTime]) acc[entry.startTime] = {};
-                acc[entry.startTime][entry.day] = entry;
+                const key = String(entry.startTime).split(' ')[0];
+                if (!acc[key]) acc[key] = {};
+                acc[key][entry.day] = { ...entry, startTime: key };
                 return acc;
             }, {});
-            for (const time in groupedByTime) {
+            for (const time of order.filter(t => groupedByTime[t])) {
                 const row = tableBody.insertRow();
                 row.innerHTML = `<td class="px-6 py-4 font-medium">${time}</td>`;
                 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1364,7 +1368,7 @@ async function loadFacultyClasses() {
             data.classes.forEach(cls => {
                 const option = document.createElement('option');
                 option.value = cls._id;
-                option.textContent = `${cls.subject} => ${cls.branch}, ${cls.year} ${cls.branch} - ${cls.semester} ${cls.section}`;
+                option.textContent = `${cls.subject} => ${cls.branch}, ${cls.year} - ${cls.semester} ${cls.section}`;
                 classSelect.appendChild(option);
             });
         }

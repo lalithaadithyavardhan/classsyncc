@@ -263,9 +263,13 @@ app.post('/api/login', async (req, res) => {
 // --- Timetable Endpoints ---
 app.get('/api/timetable/student', async (req, res) => {
     try {
-        const { branch, year, section } = req.query;
+        const { branch, year, section, semester } = req.query;
         const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
-        const timetable = await timetableCollection.find({ branch, year: parseInt(year), section }).toArray();
+        const filter = { branch };
+        if (year) filter.year = parseInt(year);
+        if (section) filter.section = section;
+        if (semester) filter.semester = semester;
+        const timetable = await timetableCollection.find(filter).toArray();
         res.json({ success: true, timetable });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Server error' });
@@ -275,7 +279,9 @@ app.get('/api/timetable/student', async (req, res) => {
 app.get('/api/timetable/faculty/:facultyId', async (req, res) => {
     try {
         const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
-        const timetable = await timetableCollection.find({ facultyId: req.params.facultyId }).toArray();
+        const filter = { facultyId: req.params.facultyId };
+        if (req.query.semester) filter.semester = req.query.semester;
+        const timetable = await timetableCollection.find(filter).toArray();
         res.json({ success: true, timetable });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Server error' });
@@ -309,58 +315,97 @@ app.post('/api/faculty/names', async (req, res) => {
 
 // --- Enhanced Faculty Attendance Endpoints ---
 
+// Helper: map timetable start time to period number (align with admin editor)
+const START_TIME_TO_PERIOD = {
+  '9:30': 1,
+  '10:20': 2,
+  '11:10': 3,
+  '12:00': 4,
+  '1:50': 5,
+  '2:40': 6,
+  '3:30': 7,
+};
+
+function startTimeToPeriod(startTime) {
+  if (!startTime) return undefined;
+  // Normalize values like "9:30 AM" to "9:30"
+  const normalized = String(startTime).split(' ')[0];
+  return START_TIME_TO_PERIOD[normalized];
+}
+
+// Ensure there is a Class document for the given timetable mapping
+async function getOrCreateClassForMapping({ subject, branch, year, section, semester, facultyId, periods }) {
+  const existing = await Class.findOne({ subject, branch, year, section, semester, facultyId });
+  if (!existing) {
+    const cls = new Class({
+      subject,
+      branch,
+      year,
+      semester: semester || 'I Semester', // fallback when semester is not stored in timetable
+      section,
+      periods: Array.from(new Set(periods || [])),
+      facultyId,
+      students: [],
+    });
+    await cls.save();
+    return cls;
+  }
+  const merged = Array.from(new Set([...(existing.periods || []), ...(periods || [])]));
+  if (merged.length !== (existing.periods || []).length) {
+    existing.periods = merged;
+    await existing.save();
+  }
+  return existing;
+}
+
 // Get classes for a faculty (dynamically from existing data)
 app.get('/api/faculty/classes/:facultyId', async (req, res) => {
   try {
     const { facultyId } = req.params;
-    
-    // Get all students from MongoDB
-    const usersCollection = getCollection(COLLECTIONS.USERS);
-    const allStudents = await usersCollection.find({ role: 'student' }).toArray();
-    const studentRolls = allStudents.map(student => student.roll);
-    
-    // Create virtual classes based on existing students
-    // This simulates what would happen in a real system
-    const virtualClasses = [
-      {
-        _id: 'class-java-sec-a',
-        subject: 'JAVA',
-        branch: 'B.Tech',
-        year: 3,
-        semester: 'I Semester',
-        section: 'Sec-A',
-        periods: [1, 2, 3],
-        facultyId: facultyId,
-        students: studentRolls.slice(0, Math.floor(studentRolls.length / 3)),
-        isActive: true
-      },
-      {
-        _id: 'class-coding-sec-b',
-        subject: 'Coding',
-        branch: 'B.Tech',
-        year: 3,
-        semester: 'I Semester',
-        section: 'Sec-B',
-        periods: [4, 5, 6],
-        facultyId: facultyId,
-        students: studentRolls.slice(Math.floor(studentRolls.length / 3), Math.floor(2 * studentRolls.length / 3)),
-        isActive: true
-      },
-      {
-        _id: 'class-lab-sec-c',
-        subject: 'JA LAB',
-        branch: 'B.Tech',
-        year: 3,
-        semester: 'I Semester',
-        section: 'Sec-C',
-        periods: [4, 5, 6],
-        facultyId: facultyId,
-        students: studentRolls.slice(Math.floor(2 * studentRolls.length / 3)),
-        isActive: true
+    const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
+    // Pull faculty's timetable rows
+    const timetable = await timetableCollection.find({ facultyId }).toArray();
+
+    if (!timetable || timetable.length === 0) {
+      return res.json({ success: true, classes: [] });
+    }
+
+    // Group by subject + class (branch,year,section)
+    const grouped = new Map();
+    for (const row of timetable) {
+      const key = `${row.subject}||${row.branch}||${row.year}||${row.section}||${row.semester || ''}`;
+      const period = startTimeToPeriod(row.startTime);
+      if (!grouped.has(key)) {
+        grouped.set(key, { subject: row.subject, branch: row.branch, year: row.year, section: row.section, semester: row.semester || 'I Semester', periods: new Set() });
       }
-    ];
-    
-    res.json({ success: true, classes: virtualClasses });
+      if (period) grouped.get(key).periods.add(period);
+    }
+
+    // Ensure a Class exists for each group and build response
+    const classes = [];
+    for (const [, value] of grouped) {
+      const clsDoc = await getOrCreateClassForMapping({
+        subject: value.subject,
+        branch: value.branch,
+        year: value.year,
+        section: value.section,
+        semester: value.semester,
+        facultyId,
+        periods: Array.from(value.periods),
+      });
+      classes.push({
+        _id: clsDoc._id,
+        subject: clsDoc.subject,
+        branch: clsDoc.branch,
+        year: clsDoc.year,
+        semester: clsDoc.semester,
+        section: clsDoc.section,
+        periods: clsDoc.periods,
+        facultyId: clsDoc.facultyId,
+      });
+    }
+
+    res.json({ success: true, classes });
   } catch (error) {
     console.error('Error fetching faculty classes:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch classes' });
@@ -371,51 +416,31 @@ app.get('/api/faculty/classes/:facultyId', async (req, res) => {
 app.get('/api/faculty/class/:classId/students', async (req, res) => {
   try {
     const { classId } = req.params;
-    
-    // Get all students from MongoDB
     const usersCollection = getCollection(COLLECTIONS.USERS);
-    const allStudents = await usersCollection.find({ role: 'student' }).toArray();
-    const studentRolls = allStudents.map(student => student.roll);
-    
-    // Determine which students belong to this class based on classId
-    let classStudents = [];
-    let classData = null;
-    
-    if (classId === 'class-java-sec-a') {
-      classStudents = studentRolls.slice(0, Math.floor(studentRolls.length / 3));
-      classData = {
-        subject: 'JAVA',
-        section: 'Sec-A',
-        branch: 'B.Tech',
-        year: 3,
-        semester: 'I Semester'
-      };
-    } else if (classId === 'class-coding-sec-b') {
-      classStudents = studentRolls.slice(Math.floor(studentRolls.length / 3), Math.floor(2 * studentRolls.length / 3));
-      classData = {
-        subject: 'Coding',
-        section: 'Sec-B',
-        branch: 'B.Tech',
-        year: 3,
-        semester: 'I Semester'
-      };
-    } else if (classId === 'class-lab-sec-c') {
-      classStudents = studentRolls.slice(Math.floor(2 * studentRolls.length / 3));
-      classData = {
-        subject: 'JA LAB',
-        section: 'Sec-C',
-        branch: 'B.Tech',
-        year: 3,
-        semester: 'I Semester'
-      };
+
+    const cls = await Class.findById(classId);
+    if (!cls) {
+      return res.status(404).json({ success: false, error: 'Class not found' });
     }
-    
-    // Get student details for the enrolled students
-    const students = await usersCollection.find({ 
-      roll: { $in: classStudents },
-      role: 'student'
+
+    // Students are determined by branch/year/section mapping from timetable
+    const students = await usersCollection.find({
+      role: 'student',
+      branch: cls.branch,
+      year: cls.year,
+      section: cls.section,
+      semester: cls.semester,
     }).toArray();
-    
+
+    const classData = {
+      _id: cls._id,
+      subject: cls.subject,
+      section: cls.section,
+      branch: cls.branch,
+      year: cls.year,
+      semester: cls.semester,
+    };
+
     res.json({ success: true, students, classData });
   } catch (error) {
     console.error('Error fetching class students:', error);
@@ -716,13 +741,14 @@ app.delete('/api/admin/users/:id', async (req, res) => {
 
 app.post('/api/admin/timetable/bulk-update', async (req, res) => {
     try {
-        const { branch, year, section, timetableEntries } = req.body;
+        const { branch, year, section, semester, timetableEntries } = req.body;
         const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
 
         await timetableCollection.deleteMany({
             branch,
             year: parseInt(year),
-            section
+            section,
+            ...(semester ? { semester } : {})
         });
 
         if (timetableEntries && timetableEntries.length > 0) {
@@ -730,12 +756,13 @@ app.post('/api/admin/timetable/bulk-update', async (req, res) => {
                 ...entry,
                 branch,
                 year: parseInt(year),
-                section
+                section,
+                ...(semester ? { semester } : {})
             }));
             await timetableCollection.insertMany(entriesToInsert);
         }
 
-        res.json({ success: true, message: `Timetable for ${branch} ${year}-${section} updated successfully.` });
+        res.json({ success: true, message: `Timetable for ${branch} ${year}-${section}${semester ? ' ' + semester : ''} updated successfully.` });
     } catch (error) {
         console.error("Timetable bulk update error:", error);
         res.status(500).json({ success: false, message: 'Server error during timetable update.' });

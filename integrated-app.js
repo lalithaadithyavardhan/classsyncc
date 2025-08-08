@@ -249,7 +249,7 @@ async function renderFacultyWeeklyTimetable() {
     // Fetch timetable
     let timetable = [];
     try {
-        const response = await fetch(`/api/timetable/faculty/${currentUser.roll}`);
+        const response = await fetch(`/api/timetable/faculty/${currentUser.roll}${currentUser.semester ? `?semester=${encodeURIComponent(currentUser.semester)}` : ''}`);
         const data = await response.json();
         if (data.success && data.timetable.length > 0) {
             timetable = data.timetable;
@@ -265,9 +265,14 @@ async function renderFacultyWeeklyTimetable() {
         if (grouped[entry.day]) grouped[entry.day].push(entry);
     });
     // Sort each day's classes by start time
-    const timeOrder = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
+    const timeOrder = ['9:30','10:20','11:10','12:00','1:50','2:40','3:30'].map(t => timeStringToMinutes(`${t} AM`).toString());
+    // Override comparator using explicit order above
     days.forEach(day => {
-        grouped[day].sort((a, b) => timeOrder.indexOf(timeStringToMinutes(a.startTime)) - timeOrder.indexOf(timeStringToMinutes(b.startTime)));
+        grouped[day].sort((a, b) => {
+            const aKey = String(a.startTime).split(' ')[0];
+            const bKey = String(b.startTime).split(' ')[0];
+            return ['9:30','10:20','11:10','12:00','1:50','2:40','3:30'].indexOf(aKey) - ['9:30','10:20','11:10','12:00','1:50','2:40','3:30'].indexOf(bKey);
+        });
     });
     // Render columns
     days.forEach(day => {
@@ -318,12 +323,13 @@ async function handleAdminViewTimetable() {
     const branch = document.getElementById('admin-branch-select').value;
     const year = document.getElementById('admin-year-select').value;
     const section = document.getElementById('admin-section-select').value;
+    const semester = document.getElementById('admin-semester-select').value;
     document.querySelectorAll('.interactive-timetable-input').forEach(input => input.value = '');
     try {
-        const response = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}`);
+        const response = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}&semester=${encodeURIComponent(semester)}`);
         const data = await response.json();
         if (data.success && data.timetable) {
-            const periodMap = { '9:30': 1, '10:20': 2, '11:10': 3, '12:00': 4, '12:30': 5, '1:20': 6, '2:10': 7 };
+            const periodMap = { '9:30': 1, '10:20': 2, '11:10': 3, '12:00': 4, '1:50': 5, '2:40': 6, '3:30': 7 };
             data.timetable.forEach(slot => {
                 const period = periodMap[slot.startTime];
                 if (period) {
@@ -346,8 +352,9 @@ async function handleAdminSaveTimetable() {
     const branch = document.getElementById('admin-branch-select').value;
     const year = document.getElementById('admin-year-select').value;
     const section = document.getElementById('admin-section-select').value;
+    const semester = document.getElementById('admin-semester-select').value;
     const timetableData = [];
-    const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '12:30', 6: '1:20', 7: '2:10' };
+    const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '1:50', 6: '2:40', 7: '3:30' };
     document.querySelectorAll('#admin-timetable-grid-body tr').forEach(row => {
         const day = row.querySelector('th').textContent;
         for (let period = 1; period <= 7; period++) {
@@ -368,7 +375,7 @@ async function handleAdminSaveTimetable() {
         const response = await fetch('/api/admin/timetable/bulk-update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ branch, year, section, timetableEntries: timetableData })
+            body: JSON.stringify({ branch, year, section, semester, timetableEntries: timetableData })
         });
         const result = await response.json();
         if (result.success) {
@@ -492,10 +499,12 @@ async function fetchUserTimetable() {
     if (!currentUser) return;
     let url = '';
     if (currentRole === 'student') {
-        const { branch, year, section } = currentUser;
-        url = `/api/timetable/student?branch=${branch}&year=${year}&section=${section}`;
+        const { branch, year, section, semester } = currentUser;
+        const query = new URLSearchParams({ branch, year, section });
+        if (semester) query.set('semester', semester);
+        url = `/api/timetable/student?${query.toString()}`;
     } else if (currentRole === 'faculty') {
-        url = `/api/timetable/faculty/${currentUser.roll}`;
+        url = `/api/timetable/faculty/${currentUser.roll}${currentUser.semester ? `?semester=${encodeURIComponent(currentUser.semester)}` : ''}`;
     }
     try {
         const response = await fetch(url);
@@ -654,10 +663,10 @@ function getClassEndTime(startTime) {
         '9:30': '10:20',
         '10:20': '11:10',
         '11:10': '12:00',
-        '12:00': '12:30',
-        '12:30': '1:20',
-        '1:20': '2:10',
-        '2:10': '3:00'
+        '12:00': '12:50',
+        '1:50': '2:40',
+        '2:40': '3:30',
+        '3:30': '4:20'
     };
     return timeMap[startTime] || 'Unknown';
 }
@@ -698,7 +707,7 @@ async function loadFacultyDashboardClasses() {
     if (!currentUser || currentRole !== 'faculty') return;
     
     try {
-        const response = await fetch(`/api/timetable/faculty/${currentUser.roll}`);
+        const response = await fetch(`/api/timetable/faculty/${currentUser.roll}${currentUser.semester ? `?semester=${encodeURIComponent(currentUser.semester)}` : ''}`);
         const data = await response.json();
         
         if (data.success && data.timetable.length > 0) {
