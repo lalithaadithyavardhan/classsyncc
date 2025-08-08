@@ -139,9 +139,17 @@ async function handleAttendanceRequest(clientId, data) {
                 return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Attendance session not found.' });
             }
             
-            // Check if student is enrolled in this class
+            // Check if student is enrolled in this class (fallback to branch/year/section if list is empty)
             const classData = await Class.findById(session.classId);
-            if (!classData.students.includes(roll)) {
+            const usersCollectionLocal = getCollection(COLLECTIONS.USERS);
+            let isEnrolled = false;
+            if (Array.isArray(classData.students) && classData.students.length > 0) {
+                isEnrolled = classData.students.includes(roll);
+            } else {
+                const studentDoc = await usersCollectionLocal.findOne({ roll });
+                isEnrolled = !!studentDoc && studentDoc.branch === classData.branch && studentDoc.year === classData.year && studentDoc.section === classData.section;
+            }
+            if (!isEnrolled) {
                 return sendToClient(clientId, { type: 'ATTENDANCE_RESPONSE', success: false, message: 'Student not enrolled in this class.' });
             }
             
@@ -284,7 +292,9 @@ app.get('/api/timetable/faculty/:facultyId', async (req, res) => {
         const facultyUser = await usersCollection.findOne({ roll: facultyId, role: 'faculty' });
         const candidateIds = [facultyId];
         if (facultyUser && facultyUser.name) candidateIds.push(facultyUser.name);
-        const filter = { facultyId: { $in: candidateIds } };
+        // Case-insensitive match as well
+        const regexes = candidateIds.map(v => new RegExp(`^${String(v).trim().replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}$`, 'i'));
+        const filter = { facultyId: { $in: [...candidateIds, ...regexes] } };
         if (req.query.semester) filter.semester = req.query.semester;
         const timetable = await timetableCollection.find(filter).toArray();
         res.json({ success: true, timetable });
@@ -373,7 +383,8 @@ app.get('/api/faculty/classes/:facultyId', async (req, res) => {
     const facultyUser = await usersCollection.findOne({ roll: facultyId, role: 'faculty' });
     const candidateIds = [facultyId];
     if (facultyUser && facultyUser.name) candidateIds.push(facultyUser.name);
-    const timetable = await timetableCollection.find({ facultyId: { $in: candidateIds } }).toArray();
+    const regexes = candidateIds.map(v => new RegExp(`^${String(v).trim().replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}$`, 'i'));
+    const timetable = await timetableCollection.find({ facultyId: { $in: [...candidateIds, ...regexes] } }).toArray();
 
     if (!timetable || timetable.length === 0) {
       return res.json({ success: true, classes: [] });
@@ -421,6 +432,86 @@ app.get('/api/faculty/classes/:facultyId', async (req, res) => {
   }
 });
 
+// Lightweight subjects list for faculty (for new UI)
+app.get('/api/faculty/subjects', async (req, res) => {
+  try {
+    const { facultyId } = req.query;
+    if (!facultyId) return res.status(400).json({ success: false, message: 'facultyId is required' });
+
+    const usersCollection = getCollection(COLLECTIONS.USERS);
+    const timetableCollection = getCollection(COLLECTIONS.TIMETABLE);
+    const facultyUser = await usersCollection.findOne({ roll: facultyId, role: 'faculty' });
+    const candidateIds = [facultyId];
+    if (facultyUser && facultyUser.name) candidateIds.push(facultyUser.name);
+    const regexes = candidateIds.map(v => new RegExp(`^${String(v).trim().replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}$`, 'i'));
+    const rows = await timetableCollection.find({ facultyId: { $in: [...candidateIds, ...regexes] } }).toArray();
+    if (!rows || rows.length === 0) return res.json({ success: true, subjects: [] });
+
+    const grouped = {};
+    rows.forEach(r => {
+      const key = `${r.subject}||${r.branch}||${r.year}||${r.section}||${r.semester || ''}`;
+      if (!grouped[key]) grouped[key] = { subject: r.subject, branch: r.branch, year: r.year, section: r.section, semester: r.semester || 'I Semester', periods: new Set() };
+      const p = startTimeToPeriod(r.startTime);
+      if (p) grouped[key].periods.add(p);
+    });
+    const subjects = Object.values(grouped).map(x => ({ ...x, periods: Array.from(x.periods) }));
+    return res.json({ success: true, subjects });
+  } catch (e) {
+    console.error('Error fetching faculty subjects:', e);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Class students by branch/year/section
+app.get('/api/class/students', async (req, res) => {
+  try {
+    const { branch, year, section } = req.query;
+    if (!branch || !year || !section) return res.status(400).json({ success: false, message: 'branch, year and section are required' });
+    const usersCollection = getCollection(COLLECTIONS.USERS);
+    const students = await usersCollection.find({ role: 'student', branch, year: Number(year), section }).toArray();
+    return res.json({ success: true, students });
+  } catch (e) {
+    console.error('Error fetching class students (by params):', e);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Save attendance for multiple students/periods with topics
+app.post('/api/faculty/attendance', async (req, res) => {
+  try {
+    const { date, subject, klass, periods, facultyId, topics, students } = req.body;
+    if (!date || !subject || !klass || !periods || !Array.isArray(periods) || !facultyId || !Array.isArray(students)) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+    const attendanceCollection = getCollection(COLLECTIONS.ATTENDANCE);
+    const docs = [];
+    for (const s of students) {
+      for (const p of periods) {
+        const present = (s.present && (s.present[p] === true || s.present[p] === 'true')) ? true : false;
+        docs.push({
+          roll: s.roll,
+          date,
+          status: present ? 'Present' : 'Absent',
+          period: Number(p),
+          subject: subject,
+          method: 'form',
+          unit: topics?.unit || '',
+          topics: topics?.topics || '',
+          timestamp: new Date(),
+          branch: klass.branch,
+          year: Number(klass.year),
+          section: klass.section,
+          facultyId
+        });
+      }
+    }
+    if (docs.length > 0) await attendanceCollection.insertMany(docs);
+    return res.json({ success: true, inserted: docs.length });
+  } catch (e) {
+    console.error('Error saving faculty attendance:', e);
+    return res.status(500).json({ success: false, message: 'Server error while saving attendance' });
+  }
+});
 // Get students for a specific class
 app.get('/api/faculty/class/:classId/students', async (req, res) => {
   try {
@@ -433,7 +524,7 @@ app.get('/api/faculty/class/:classId/students', async (req, res) => {
     }
 
     // Students are determined by branch/year/section mapping from timetable
-    const students = await usersCollection.find({
+    const students = await usersCollection.find({ 
       role: 'student',
       branch: cls.branch,
       year: cls.year,
@@ -448,7 +539,7 @@ app.get('/api/faculty/class/:classId/students', async (req, res) => {
       year: cls.year,
       semester: cls.semester,
     };
-
+    
     res.json({ success: true, students, classData });
   } catch (error) {
     console.error('Error fetching class students:', error);
@@ -501,9 +592,17 @@ app.post('/api/faculty/attendance/mark', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Attendance session not found.' });
     }
     
-    // Check if student is enrolled in this class
+    // Check if student is enrolled in this class (fallback to branch/year/section)
     const classData = await Class.findById(session.classId);
-    if (!classData.students.includes(studentRoll)) {
+    const usersCollectionLocal2 = getCollection(COLLECTIONS.USERS);
+    let isEnrolled = false;
+    if (Array.isArray(classData.students) && classData.students.length > 0) {
+      isEnrolled = classData.students.includes(studentRoll);
+    } else {
+      const studentDoc = await usersCollectionLocal2.findOne({ roll: studentRoll });
+      isEnrolled = !!studentDoc && studentDoc.branch === classData.branch && studentDoc.year === classData.year && studentDoc.section === classData.section;
+    }
+    if (!isEnrolled) {
       return res.status(400).json({ success: false, message: 'Student not enrolled in this class.' });
     }
     
@@ -781,20 +880,31 @@ app.post('/api/admin/timetable/bulk-update', async (req, res) => {
 
 app.get('/api/admin/attendance/export', async (req, res) => {
     try {
-        const { branch, year, section, date } = req.query;
+        const { branch, year, section, date, period } = req.query;
         const filter = {};
         if (branch) filter.branch = branch;
         if (year) filter.year = Number(year);
         if (section) filter.section = section;
         if (date) filter.date = date;
+        if (period) filter.period = Number(period);
 
         const collection = getCollection(COLLECTIONS.ATTENDANCE);
         const attendance = await collection.find(filter).toArray();
         
         const data = attendance.map(a => ({
-            'Roll Number': a.roll, 'Date': a.date, 'Status': a.status,
-            'Timestamp': a.timestamp, 'Device ID': a.deviceId, 'Signal (RSSI)': a.rssi,
-            'Branch': a.branch, 'Year': a.year, 'Section': a.section
+            'Roll Number': a.roll,
+            'Date': a.date,
+            'Status': a.status,
+            'Period': a.period || '',
+            'Subject': a.subject || '',
+            'Unit': a.unit || '',
+            'Topics': a.topics || '',
+            'Timestamp': a.timestamp,
+            'Device ID': a.deviceId || '',
+            'Signal (RSSI)': a.rssi || '',
+            'Branch': a.branch,
+            'Year': a.year,
+            'Section': a.section
         }));
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();

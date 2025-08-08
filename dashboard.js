@@ -1371,7 +1371,7 @@ async function loadFacultyClasses() {
                 classSelect.appendChild(opt);
                 return;
             }
-
+            
             data.classes.forEach(cls => {
                 const option = document.createElement('option');
                 option.value = cls._id;

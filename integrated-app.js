@@ -207,8 +207,10 @@ function loadAttendanceContent() {
         content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
         loadStudentAttendanceSummary(currentUser.roll);
     } else if (currentRole === 'faculty') {
-        content.innerHTML = `<div><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h3 class="text-xl font-bold mb-4">Start Attendance Session</h3><button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4"><i class="fas fa-play mr-2"></i>Start Scanning</button><div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg mb-4"></div><div><h4 class="font-semibold mb-2">Manual Attendance</h4><div class="flex gap-2"><input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg"><button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add</button></div></div></div><div><h4 class="font-semibold mb-2">Discovered Devices</h4><ul id="discovered-devices-list" class="space-y-2 max-h-60 overflow-y-auto"></ul><h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4><div id="faculty-attendance-list" class="space-y-2"></div></div></div></div>`;
-        loadFacultyAttendance();
+        // Show the new faculty form placed in HTML
+        const form = document.getElementById('faculty-attendance-form');
+        if (form) form.classList.remove('hidden');
+        setupFacultyAttendanceUI();
     } else if (currentRole === 'admin') {
         content.innerHTML = `<h3 class="text-xl font-bold mb-4">View Attendance Records</h3><div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg"><div><label for="branchFilter">Branch:</label><select id="branchFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="CSE">CSE</option><option value="IT">IT</option></select></div><div><label for="yearFilter">Year:</label><select id="yearFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div><div><label for="sectionFilter">Section:</label><select id="sectionFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="A">A</option><option value="B">B</option></select></div><div><label for="dateFilter">Date:</label><input type="date" id="dateFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"></div></div><div class="flex justify-between items-center mb-4"><button id="applyFilterBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">View Attendance</button><button id="downloadBtn" class="px-4 py-2 bg-green-600 text-white rounded-lg">Download as Excel</button></div><div class="overflow-x-auto"><table class="min-w-full"><thead class="bg-gray-50"><tr><th>Roll Number</th><th>Status</th><th>Date</th><th>Timestamp</th></tr></thead><tbody id="admin-attendance-table"></tbody></table></div>`;
         document.getElementById('applyFilterBtn').addEventListener('click', fetchAdminAttendance);
@@ -935,4 +937,171 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event listeners for modal and user management that are always present
     document.getElementById('cancel-user-btn').addEventListener('click', closeUserModal);
     document.getElementById('user-form').addEventListener('submit', handleUserFormSubmit);
+    // If faculty is already logged in via persisted session, ensure UI setup runs
 });
+
+// =====================
+// Faculty Attendance UI
+// =====================
+function setupFacultyAttendanceUI() {
+  const dateEl = document.getElementById('fa-date');
+  if (dateEl) dateEl.value = new Date().toISOString().split('T')[0];
+
+  const loadSubjectsBtn = document.getElementById('fa-load-subjects');
+  const subjectSel = document.getElementById('fa-subject');
+  const periodsDiv = document.getElementById('fa-periods');
+  const showBtn = document.getElementById('fa-show');
+  const startScanBtn = document.getElementById('fa-start-scan');
+  const stopScanBtn = document.getElementById('fa-stop-scan');
+  const saveBtn = document.getElementById('fa-save');
+  const statusEl = document.getElementById('fa-status');
+
+  // helpers
+  const getSelectedPeriods = () => Array.from(periodsDiv.querySelectorAll('input[type="checkbox"]:checked')).map(cb => Number(cb.value));
+
+  // Populate periods checkboxes after subjects load
+  function renderPeriods(periodList) {
+    periodsDiv.innerHTML = '';
+    const label = document.createElement('div');
+    label.className = 'text-sm font-medium text-gray-700';
+    label.textContent = 'Periods:';
+    periodsDiv.appendChild(label);
+    const container = document.createElement('div');
+    container.className = 'flex flex-wrap gap-3 mt-2';
+    const all = periodList && periodList.length ? periodList : [1,2,3,4,5,6,7];
+    all.forEach(p => {
+      const wrap = document.createElement('label');
+      wrap.className = 'flex items-center gap-1 text-sm';
+      wrap.innerHTML = `<input type="checkbox" value="${p}"><span>Period ${p}</span>`;
+      container.appendChild(wrap);
+    });
+    periodsDiv.appendChild(container);
+  }
+
+  async function loadSubjects() {
+    if (!subjectSel) return;
+    subjectSel.innerHTML = '<option value="">Loading...</option>';
+    try {
+      const facultyId = currentUser?.roll;
+      const res = await fetch(`/api/faculty/subjects?facultyId=${encodeURIComponent(facultyId)}`);
+      const data = await res.json();
+      subjectSel.innerHTML = '<option value="">Select Subject</option>';
+      if (data.success && data.subjects.length) {
+        data.subjects.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = JSON.stringify(s);
+          opt.textContent = `${s.subject} => ${s.branch}, ${s.year} - ${s.semester} ${s.section}`;
+          subjectSel.appendChild(opt);
+        });
+        // Default periods from first subject
+        renderPeriods(data.subjects[0].periods);
+      } else {
+        const opt = document.createElement('option'); opt.disabled = true; opt.textContent = 'No classes mapped'; subjectSel.appendChild(opt);
+        renderPeriods([]);
+      }
+    } catch (e) {
+      subjectSel.innerHTML = '<option value="">Failed to load</option>';
+      renderPeriods([]);
+    }
+  }
+
+  async function showStudents() {
+    if (!subjectSel?.value) { alert('Select a subject'); return; }
+    const selected = JSON.parse(subjectSel.value);
+    const periods = getSelectedPeriods();
+    if (!periods.length) { alert('Select at least one period'); return; }
+    // build header
+    const thead = document.getElementById('fa-students-thead');
+    const tbody = document.getElementById('fa-students-tbody');
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+    const headRow = document.createElement('tr');
+    headRow.innerHTML = `<th class="px-3 py-2">SL.NO</th><th class="px-3 py-2">STUDENT NAME</th><th class="px-3 py-2">ROLL.NO</th>` + periods.map(p => `<th class=\"px-3 py-2\">PERIOD ${p}</th>`).join('');
+    thead.appendChild(headRow);
+    // fetch students
+    const res = await fetch(`/api/class/students?branch=${encodeURIComponent(selected.branch)}&year=${encodeURIComponent(selected.year)}&section=${encodeURIComponent(selected.section)}`);
+    const data = await res.json();
+    if (!(data.success && data.students.length)) { statusEl.textContent = 'No students found for this class.'; return; }
+    // render rows
+    data.students.forEach((st, idx) => {
+      const tr = document.createElement('tr');
+      const base = `<td class=\"px-3 py-2\">${idx+1}</td><td class=\"px-3 py-2\">${st.name || ''}</td><td class=\"px-3 py-2\">${st.roll}</td>`;
+      const perCells = periods.map(p => `<td class=\"px-3 py-2 text-center\"><input type=\"checkbox\" data-roll=\"${st.roll}\" data-period=\"${p}\" class=\"fa-present\"></td>`).join('');
+      tr.innerHTML = base + perCells;
+      tbody.appendChild(tr);
+    });
+    // after list is shown, enable scan buttons
+    startScanBtn.disabled = false;
+    stopScanBtn.disabled = false;
+    statusEl.textContent = 'Students loaded. You can start Bluetooth scanning.';
+  }
+
+  function handleDeviceFoundForForm(device) {
+    // device.roll expected
+    const periods = getSelectedPeriods();
+    if (!periods.length) return;
+    const checkboxes = document.querySelectorAll(`input.fa-present[data-roll="${device.roll}"]`);
+    checkboxes.forEach(cb => {
+      if (periods.includes(Number(cb.getAttribute('data-period')))) {
+        cb.checked = true;
+      }
+    });
+  }
+
+  // Hook into existing WS handler
+  const originalHandleDeviceFound = typeof handleDeviceFound === 'function' ? handleDeviceFound : null;
+  window.handleDeviceFound = (data) => {
+    if (data && data.device) handleDeviceFoundForForm(data.device);
+    if (originalHandleDeviceFound) originalHandleDeviceFound(data);
+  };
+
+  async function saveAttendance() {
+    if (!subjectSel?.value) { alert('Select a subject'); return; }
+    const selected = JSON.parse(subjectSel.value);
+    const periods = getSelectedPeriods();
+    if (!periods.length) { alert('Select at least one period'); return; }
+    const dateVal = document.getElementById('fa-date').value;
+    const unit = document.getElementById('fa-unit').value.trim();
+    const topics = document.getElementById('fa-topics').value.trim();
+    // collect students
+    const rows = Array.from(document.querySelectorAll('#fa-students-tbody tr'));
+    const students = rows.map(r => {
+      const tds = r.querySelectorAll('td');
+      const roll = tds[2]?.textContent?.trim();
+      const present = {};
+      periods.forEach(p => {
+        const cb = r.querySelector(`input.fa-present[data-period="${p}"]`);
+        present[p] = !!cb?.checked;
+      });
+      return { roll, present };
+    });
+    // confirm absentees
+    const absentees = students.filter(s => periods.some(p => !s.present[p])).map(s => s.roll);
+    if (!confirm(`Confirm save? Absent: ${absentees.join(', ') || 'None'}`)) return;
+    const payload = {
+      date: dateVal,
+      subject: selected.subject,
+      klass: { branch: selected.branch, year: selected.year, section: selected.section },
+      periods,
+      facultyId: currentUser?.roll,
+      topics: { unit, topics },
+      students
+    };
+    const res = await fetch('/api/faculty/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await res.json();
+    if (result.success) alert('Attendance posted successfully'); else alert(result.message || 'Failed to save');
+  }
+
+  // Events
+  if (loadSubjectsBtn) loadSubjectsBtn.onclick = loadSubjects;
+  if (subjectSel) subjectSel.onchange = () => {
+    try { const selected = JSON.parse(subjectSel.value); renderPeriods(selected.periods); } catch { renderPeriods([]); }
+  };
+  if (showBtn) showBtn.onclick = showStudents;
+  if (saveBtn) saveBtn.onclick = saveAttendance;
+  if (startScanBtn) startScanBtn.onclick = () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'FACULTY_SCAN_START' })); };
+  if (stopScanBtn) stopScanBtn.onclick = () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'FACULTY_SCAN_STOP' })); };
+
+  // Initial
+  renderPeriods([]);
+}
