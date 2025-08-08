@@ -1357,7 +1357,7 @@ let currentPeriods = [];
 // Load faculty classes
 async function loadFacultyClasses() {
     try {
-        const facultyId = localStorage.getItem('currentUserId') || 'F101'; // Demo faculty ID
+        const facultyId = (currentUser && currentUser.roll) || localStorage.getItem('currentUserId') || 'F101';
         const response = await fetch(`/api/faculty/classes/${facultyId}`);
         const data = await response.json();
         
@@ -1365,6 +1365,13 @@ async function loadFacultyClasses() {
             const classSelect = document.getElementById('class-select');
             classSelect.innerHTML = '<option value="">Select Subject</option>';
             
+            if (!data.classes || data.classes.length === 0) {
+                const opt = document.createElement('option');
+                opt.disabled = true; opt.textContent = 'No classes mapped';
+                classSelect.appendChild(opt);
+                return;
+            }
+
             data.classes.forEach(cls => {
                 const option = document.createElement('option');
                 option.value = cls._id;
@@ -1496,7 +1503,7 @@ async function startEnhancedAttendanceSession() {
     const date = document.getElementById('attendance-date').value;
     
     try {
-        const facultyId = localStorage.getItem('currentUserId') || 'F101';
+        const facultyId = (currentUser && currentUser.roll) || 'F101';
         const response = await fetch('/api/faculty/attendance/session', {
             method: 'POST',
             headers: {

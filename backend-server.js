@@ -429,7 +429,6 @@ app.get('/api/faculty/class/:classId/students', async (req, res) => {
       branch: cls.branch,
       year: cls.year,
       section: cls.section,
-      semester: cls.semester,
     }).toArray();
 
     const classData = {
