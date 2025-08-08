@@ -497,27 +497,33 @@ app.post('/api/faculty/attendance/session', async (req, res) => {
  * - /api/filter-options?field=subject&semester=I%20Semester&branch=IT&year=2
  */
 app.get('/api/filter-options', async (req, res) => {
+    const { field } = req.query;
+    console.log(`\n[API HIT] /api/filter-options for field: "${field}"`);
+    
     try {
-        const { field, semester, branch, year, section } = req.query;
-
         if (!field) {
             return res.status(400).json({ success: false, message: 'A "field" parameter is required.' });
         }
 
-        // Build the filter query based on provided parent filters
         const filterQuery = {};
-        if (semester) filterQuery.semester = semester;
-        if (branch) filterQuery.branch = branch;
-        if (year) filterQuery.year = Number(year);
-        if (section) filterQuery.section = section;
+        if (req.query.branch) filterQuery.branch = req.query.branch;
+        if (req.query.year) filterQuery.year = Number(req.query.year);
+        if (req.query.section) filterQuery.section = req.query.section;
+
+        console.log('[QUERYING DB] with filter:', filterQuery);
 
         // Use .distinct() to get unique values for the requested field
-        const options = await Timetable.distinct(field, filterQuery).sort();
+        const options = await Timetable.distinct(field, filterQuery);
+        
+        console.log(`[QUERY RESULT] Found ${options.length} options:`, options);
+
+        options.sort((a, b) => (field === 'year' ? a - b : String(a).localeCompare(String(b))));
 
         res.json({ success: true, options });
 
     } catch (err) {
-        res.status(500).json({ success: false, message: 'Failed to fetch filter options.' });
+        console.error(`[SERVER ERROR] while fetching filter options for field: "${field}"`, err);
+        res.status(500).json({ success: false, message: 'Server error while fetching filter options.' });
     }
 });
 

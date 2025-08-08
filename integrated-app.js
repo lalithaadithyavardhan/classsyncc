@@ -1130,7 +1130,7 @@ function initializeAdminAttendanceDashboard() {
     const sectionSelect = document.getElementById('admin-section-select');
     const semesterSelect = document.getElementById('admin-semester-select');
     
-    // Setup the cascading event listeners
+    // Setup the correct cascading event listeners: Branch -> Year -> Section -> Semester
     branchSelect.addEventListener('change', () => populateFilterDropdown('admin-year-select', { branch: branchSelect.value }));
     yearSelect.addEventListener('change', () => populateFilterDropdown('admin-section-select', { branch: branchSelect.value, year: yearSelect.value }));
     sectionSelect.addEventListener('change', () => populateFilterDropdown('admin-semester-select', { branch: branchSelect.value, year: yearSelect.value, section: sectionSelect.value }));
@@ -1138,11 +1138,12 @@ function initializeAdminAttendanceDashboard() {
     // Add listener for the view button
     document.getElementById('admin-view-btn')?.addEventListener('click', handleAdminViewClick);
 
-    // Start the cascade by populating the very first filter (Branches)
+    // Start the entire chain by populating the very first filter (Branches)
     populateFilterDropdown('admin-branch-select', {});
 }
 
-// Generic function to populate any filter dropdown
+
+// Generic function to populate any filter dropdown with enhanced error handling
 async function populateFilterDropdown(elementId, filters) {
     const selectElement = document.getElementById(elementId);
     const field = elementId.replace('admin-', '').replace('-select', ''); 
@@ -1153,10 +1154,17 @@ async function populateFilterDropdown(elementId, filters) {
 
     try {
         const query = new URLSearchParams({ field, ...filters }).toString();
+        console.log(`Fetching options for '${field}' with URL: /api/filter-options?${query}`);
+        
         const response = await fetch(`/api/filter-options?${query}`);
-        if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
+        
+        if (!response.ok) {
+            // If server returned an error (like 404 or 500), throw an error to be caught below
+            throw new Error(`Server error! Status: ${response.status}`);
+        }
         
         const result = await response.json();
+
         if (result.success) {
             selectElement.innerHTML = '<option value="">All</option>';
             if (result.options.length > 0) {
@@ -1164,22 +1172,23 @@ async function populateFilterDropdown(elementId, filters) {
                     selectElement.innerHTML += `<option value="${option}">${option}</option>`;
                 });
             } else {
-                selectElement.innerHTML = '<option value="">-- No options --</option>';
+                selectElement.innerHTML = '<option value="">-- No options found --</option>';
             }
         } else {
              throw new Error(result.message);
         }
     } catch (error) {
-        selectElement.innerHTML = '<option value="">Error</option>';
-        console.error(`Failed to populate ${field}:`, error);
+        // Display a helpful error message directly in the dropdown
+        selectElement.innerHTML = `<option value="">⚠️ Error</option>`;
+        console.error(`[FRONTEND ERROR] Failed to populate ${field}:`, error);
     } finally {
         selectElement.disabled = false;
     }
 }
 
-// Helper function to reset child filters when a parent filter changes
+
+// Helper function to reset child filters
 function resetSubsequentFilters(changedField) {
-    // The chain is now shorter without 'subject'
     const filterChain = ['branch', 'year', 'section', 'semester'];
     const startIndex = filterChain.indexOf(changedField) + 1;
     
