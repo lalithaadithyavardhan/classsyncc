@@ -204,6 +204,7 @@ async function loadDashboardContent(role) {
 function loadAttendanceContent() {
     const content = document.getElementById('attendanceContent');
     if (currentRole === 'student') {
+        // ... (student content remains the same)
         content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
         loadStudentAttendanceSummary(currentUser.roll);
     } else if (currentRole === 'faculty') {
@@ -212,9 +213,9 @@ function loadAttendanceContent() {
         if (form) form.classList.remove('hidden');
         setupFacultyAttendanceUI();
     } else if (currentRole === 'admin') {
-        content.innerHTML = `<h3 class="text-xl font-bold mb-4">View Attendance Records</h3><div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg"><div><label for="branchFilter">Branch:</label><select id="branchFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="CSE">CSE</option><option value="IT">IT</option></select></div><div><label for="yearFilter">Year:</label><select id="yearFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div><div><label for="sectionFilter">Section:</label><select id="sectionFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="A">A</option><option value="B">B</option></select></div><div><label for="dateFilter">Date:</label><input type="date" id="dateFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"></div></div><div class="flex justify-between items-center mb-4"><button id="applyFilterBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">View Attendance</button><button id="downloadBtn" class="px-4 py-2 bg-green-600 text-white rounded-lg">Download as Excel</button></div><div class="overflow-x-auto"><table class="min-w-full"><thead class="bg-gray-50"><tr><th>Roll Number</th><th>Status</th><th>Date</th><th>Timestamp</th></tr></thead><tbody id="admin-attendance-table"></tbody></table></div>`;
-        document.getElementById('applyFilterBtn').addEventListener('click', fetchAdminAttendance);
-        document.getElementById('downloadBtn').addEventListener('click', downloadAttendance);
+        // For admin, we don't need to load HTML from JS anymore since it's in classsyncc.html
+        // We just need to initialize the dynamic parts.
+        initializeAdminAttendanceDashboard();
     }
 }
 
@@ -1104,4 +1105,169 @@ function setupFacultyAttendanceUI() {
 
   // Initial
   renderPeriods([]);
+}
+
+// ========================================================
+//                  NEW ADMIN ATTENDANCE DASHBOARD FUNCTIONS
+// ========================================================
+
+function initializeAdminAttendanceDashboard() {
+    // Set default date to today
+    const dateSelect = document.getElementById('admin-date-select');
+    if (dateSelect) {
+        dateSelect.value = new Date().toISOString().split('T')[0];
+    }
+    
+    // Populate period checkboxes
+    const periodsContainer = document.getElementById('admin-periods-checkboxes');
+    periodsContainer.innerHTML = '';
+    for (let i = 1; i <= 7; i++) {
+        periodsContainer.innerHTML += `
+            <label class="flex items-center gap-2">
+                <input type="checkbox" value="${i}" class="admin-period-cb h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <span>Period ${i}</span>
+            </label>
+        `;
+    }
+
+    // Populate static dropdowns (can be fetched from DB in the future if needed)
+    populateSelect('admin-branch-select', ['IT', 'CSE', 'ECE', 'MECH', 'CIVIL', 'EEE']);
+    populateSelect('admin-year-select', ['1', '2', '3', '4']);
+    populateSelect('admin-section-select', ['A', 'B', 'C', 'D']);
+    
+    // Setup event listeners
+    document.getElementById('admin-branch-select').addEventListener('change', updateAvailableSubjects);
+    document.getElementById('admin-year-select').addEventListener('change', updateAvailableSubjects);
+    document.getElementById('admin-view-btn').addEventListener('click', handleAdminViewClick);
+    document.getElementById('admin-download-summary-btn')?.addEventListener('click', handleAdminDownloadClick);
+
+    // Initial population of subjects
+    updateAvailableSubjects();
+}
+
+function populateSelect(elementId, options) {
+    const select = document.getElementById(elementId);
+    select.innerHTML = '<option value="">All</option>'; // Default "All" option
+    options.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt;
+        option.textContent = opt;
+        select.appendChild(option);
+    });
+}
+
+async function updateAvailableSubjects() {
+    const branch = document.getElementById('admin-branch-select').value;
+    const year = document.getElementById('admin-year-select').value;
+    const subjectSelect = document.getElementById('admin-subject-select');
+    
+    if (!branch || !year) {
+        subjectSelect.innerHTML = '<option value="">Select Branch & Year first</option>';
+        return;
+    }
+
+    try {
+        const query = new URLSearchParams({ branch, year }).toString();
+        const response = await fetch(`/api/subjects?${query}`);
+        const result = await response.json();
+        if (result.success) {
+            populateSelect('admin-subject-select', result.subjects);
+        }
+    } catch (error) {
+        console.error("Failed to fetch subjects:", error);
+        subjectSelect.innerHTML = '<option value="">Error loading subjects</option>';
+    }
+}
+
+async function handleAdminViewClick() {
+    const filters = getAdminFilters();
+    if (!filters) return;
+
+    const outputSection = document.getElementById('summary-output-section');
+    const tbody = document.getElementById('admin-summary-tbody');
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center p-8"><i class="fas fa-spinner fa-spin mr-2"></i>Fetching summary...</td></tr>`;
+    outputSection.classList.remove('hidden');
+
+    try {
+        const response = await fetch('/api/admin/attendance/summary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(filters)
+        });
+        const result = await response.json();
+        if (result.success) {
+            renderAdminSummary(result.summary, result.absentees);
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center p-8 text-red-500">Error: ${error.message}</td></tr>`;
+    }
+}
+
+function renderAdminSummary(summaryData, absenteesData) {
+    const tbody = document.getElementById('admin-summary-tbody');
+    const absenteesContainer = document.getElementById('admin-absentees-output');
+    tbody.innerHTML = '';
+    absenteesContainer.innerHTML = ''; // Clear previous absentees
+
+    if (summaryData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center p-8 text-gray-500">No data found for the selected filters.</td></tr>`;
+        return;
+    }
+
+    // Build summary rows
+    summaryData.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b';
+        tr.innerHTML = `
+            <td class="px-4 py-2">${row.sno}</td>
+            <td class="px-4 py-2 font-semibold">${row.className}</td>
+            <td class="px-4 py-2">${row.totalStrength}</td>
+            <td class="px-4 py-2">${row.totalPresent}</td>
+            <td class="px-4 py-2">${row.totalAbsentees}</td>
+            <td class="px-4 py-2 font-bold">${row.attendancePercent}%</td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    // Build absentees list at the bottom
+    absenteesContainer.innerHTML += '<h3 class="text-base font-bold text-gray-800 mt-4 border-t pt-4">Absentees Roll Numbers:</h3>';
+    for (const className in absenteesData) {
+        const absentees = absenteesData[className];
+        if (absentees.length > 0) {
+            const div = document.createElement('div');
+            div.className = 'mt-2';
+            div.innerHTML = `
+                <p class="font-semibold">${className}:</p>
+                <p class="text-sm text-gray-600 font-mono">${absentees.join(', ')}</p>
+            `;
+            absenteesContainer.appendChild(div);
+        }
+    }
+}
+
+function getAdminFilters() {
+    const periods = Array.from(document.querySelectorAll('.admin-period-cb:checked')).map(cb => Number(cb.value));
+    const date = document.getElementById('admin-date-select').value;
+
+    if (!date || periods.length === 0) {
+        alert('Please select a date and at least one period.');
+        return null;
+    }
+
+    return {
+        date,
+        periods,
+        branch: document.getElementById('admin-branch-select').value,
+        year: document.getElementById('admin-year-select').value,
+        section: document.getElementById('admin-section-select').value,
+        subject: document.getElementById('admin-subject-select').value,
+    };
+}
+
+// Function for the download button (to be implemented)
+function handleAdminDownloadClick() {
+    alert("Download functionality for this summary will be implemented next!");
+    // This will require another endpoint that receives filters and returns an Excel file.
 }

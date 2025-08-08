@@ -485,6 +485,98 @@ app.post('/api/faculty/attendance/session', async (req, res) => {
 // ... (You would continue to refactor all other endpoints in a similar fashion)
 
 // ========================================================
+//                  NEW ADMIN ATTENDANCE ENDPOINTS
+// ========================================================
+
+/**
+ * NEW DYNAMIC FILTER ENDPOINT
+ * Fetches a list of subjects based on branch, year, etc. to populate the filter dropdown.
+ */
+app.get('/api/subjects', async (req, res) => {
+    try {
+        const { branch, year, section, semester } = req.query;
+        const filter = {};
+        if (branch) filter.branch = branch;
+        if (year) filter.year = Number(year);
+        if (section) filter.section = section;
+        if (semester) filter.semester = semester;
+
+        const subjects = await Timetable.distinct('subject', filter);
+        res.json({ success: true, subjects });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Failed to fetch subjects.' });
+    }
+});
+
+/**
+ * REFINED SUMMARY ENDPOINT
+ * This replaces the previous summary endpoint. It now accepts more filters
+ * and returns JSON data to be displayed on the page.
+ */
+app.post('/api/admin/attendance/summary', async (req, res) => {
+    try {
+        const { date, periods, branch, year, section, subject } = req.body;
+        if (!date || !periods || !Array.isArray(periods)) {
+            return res.status(400).json({ success: false, message: 'Date and periods are required.' });
+        }
+
+        const classFilter = { role: 'student' };
+        if (branch) classFilter.branch = branch;
+        if (year) classFilter.year = Number(year);
+        if (section) classFilter.section = section;
+
+        const classes = await User.aggregate([
+            { $match: classFilter },
+            { $group: { _id: { branch: '$branch', year: '$year', section: '$section' } } },
+            { $sort: { '_id.year': 1, '_id.branch': 1, '_id.section': 1 } }
+        ]);
+
+        const summaryData = [];
+        const absenteesByClass = {};
+
+        for (const [index, klass] of classes.entries()) {
+            const { branch, year, section } = klass._id;
+            if (!branch || !year || !section) continue;
+
+            const studentQuery = { role: 'student', branch, year, section };
+            const allStudents = await User.find(studentQuery).select('roll');
+            const totalStrength = allStudents.length;
+            if (totalStrength === 0) continue;
+
+            const attendanceFilter = {
+                branch, year, section, date,
+                period: { $in: periods },
+                status: { $regex: /present/i }
+            };
+            if (subject) attendanceFilter.subject = subject;
+
+            const presentRolls = await Attendance.distinct('roll', attendanceFilter);
+            const totalPresent = presentRolls.length;
+
+            const allRolls = allStudents.map(s => s.roll);
+            const absenteeRolls = allRolls.filter(roll => !presentRolls.includes(roll));
+
+            const className = `${year} ${branch}-${section}`;
+            summaryData.push({
+                sno: index + 1,
+                className,
+                totalStrength,
+                totalPresent,
+                totalAbsentees: totalStrength - totalPresent,
+                attendancePercent: totalStrength > 0 ? Math.round((totalPresent / totalStrength) * 100) : 0,
+            });
+            absenteesByClass[className] = absenteeRolls;
+        }
+
+        res.json({ success: true, summary: summaryData, absentees: absenteesByClass });
+
+    } catch (err) {
+        console.error("Attendance Summary Error:", err);
+        res.status(500).json({ success: false, message: 'Server error while creating summary.' });
+    }
+});
+
+// ========================================================
 //                  SERVER INITIALIZATION
 // ========================================================
 async function initializeServer() {

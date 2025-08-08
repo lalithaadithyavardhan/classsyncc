@@ -268,55 +268,73 @@
 
                 <!-- Other Sections (Attendance, Timetable, etc.) -->
                 <div id="attendanceSection" class="hidden">
-                     <div class="bg-white rounded-xl shadow-md overflow-hidden">
-                        <div class="gradient-bg p-4 text-white flex justify-between items-center">
-                            <h2 class="text-xl font-bold">Attendance</h2>
-                            <button onclick="showSection('dashboard')" class="text-sm font-medium hover:text-indigo-200"><i class="fas fa-arrow-left mr-2"></i>Back</button>
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <div class="gradient-bg p-4 text-white -m-6 mb-6 rounded-t-xl">
+                            <h2 class="text-xl font-bold">Daily Attendance Summary</h2>
                         </div>
-                        <div class="p-6" id="attendanceContent">
-                            <!-- Faculty Attendance Form (rendered for faculty only by JS visibility) -->
-                            <div id="faculty-attendance-form" class="space-y-4 hidden">
-                                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">Date</label>
-                                        <input type="date" id="fa-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                                    </div>
-                                    <div class="md:col-span-2">
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">Subject</label>
-                                        <select id="fa-subject" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                                            <option value="">Select Subject</option>
-                                        </select>
-                                        <button id="fa-load-subjects" class="mt-2 px-3 py-2 bg-indigo-600 text-white rounded">Show Subjects & Periods</button>
-                                    </div>
-                                    <div class="flex items-end">
-                                        <button id="fa-show" class="px-4 py-2 bg-indigo-600 text-white rounded">Show</button>
-                                    </div>
+
+                        <div class="p-4 bg-gray-50 rounded-lg border">
+                            <div class="grid grid-cols-1 md:grid-cols-5 gap-x-6 gap-y-4">
+                                <div>
+                                    <label for="admin-branch-select" class="block text-sm font-medium">Branch</label>
+                                    <select id="admin-branch-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
                                 </div>
-                                <div id="fa-periods" class="flex flex-wrap gap-4"></div>
-                                <div class="overflow-x-auto">
-                                    <table class="min-w-full text-sm" id="fa-students-table">
-                                        <thead id="fa-students-thead"></thead>
-                                        <tbody id="fa-students-tbody"></tbody>
-                                    </table>
+                                <div>
+                                    <label for="admin-year-select" class="block text-sm font-medium">Year</label>
+                                    <select id="admin-year-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
                                 </div>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">Unit</label>
-                                        <input id="fa-unit" class="w-full px-3 py-2 border border-gray-300 rounded" placeholder="Enter Unit">
-                                    </div>
-                                    <div class="md:col-span-2">
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">Topics Covered</label>
-                                        <input id="fa-topics" class="w-full px-3 py-2 border border-gray-300 rounded" placeholder="Enter Topics">
-                                    </div>
+                                <div>
+                                    <label for="admin-section-select" class="block text-sm font-medium">Section</label>
+                                    <select id="admin-section-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
                                 </div>
-                                <div class="flex items-center gap-4">
-                                    <button id="fa-start-scan" class="px-4 py-2 bg-green-600 text-white rounded">Start Bluetooth Scanning</button>
-                                    <button id="fa-stop-scan" class="px-4 py-2 bg-red-600 text-white rounded">Stop Scanning</button>
-                                    <button id="fa-save" class="ml-auto px-6 py-2 bg-indigo-700 text-white rounded">Save Attendance</button>
+                                <div>
+                                    <label for="admin-subject-select" class="block text-sm font-medium">Subject</label>
+                                    <select id="admin-subject-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
                                 </div>
-                                <div id="fa-status" class="text-sm text-gray-600"></div>
+                                <div>
+                                    <label for="admin-date-select" class="block text-sm font-medium">Date</label>
+                                    <input type="date" id="admin-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md">
+                                </div>
+                            </div>
+                            <div class="mt-4 pt-4 border-t">
+                                <label class="block text-sm font-medium mb-2">Periods</label>
+                                <div id="admin-periods-checkboxes" class="flex flex-wrap gap-x-6 gap-y-2">
+                                </div>
                             </div>
                         </div>
+
+                        <div class="flex justify-start mt-4">
+                            <button id="admin-view-btn" class="px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">
+                                <i class="fas fa-eye mr-2"></i>View
+                            </button>
+                        </div>
+                        
+                        <div id="summary-output-section" class="mt-6 hidden">
+                            <hr class="my-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-lg font-bold text-gray-800">Attendance Summary</h3>
+                                <button id="admin-download-summary-btn" class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">
+                                    <i class="fas fa-file-excel mr-2"></i>Download as Excel
+                                </button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm text-left">
+                                    <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                                        <tr>
+                                            <th class="px-4 py-3">S.No</th>
+                                            <th class="px-4 py-3">Class</th>
+                                            <th class="px-4 py-3">Total Strength</th>
+                                            <th class="px-4 py-3">Total Present</th>
+                                            <th class="px-4 py-3">No. of Absentees</th>
+                                            <th class="px-4 py-3">Attendance (%)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-summary-tbody"></tbody>
+                                </table>
+                            </div>
+                            <div id="admin-absentees-output" class="mt-6"></div>
+                        </div>
+
                     </div>
                 </div>
                 <div id="timetableSection" class="hidden">
