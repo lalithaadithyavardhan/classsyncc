@@ -2,7 +2,7 @@
 // --- THIS IS THE FIX ---
 // Only load the .env file if we are NOT in a production environment.
 if (process.env.NODE_ENV !== 'production') {
-    require('dotenv').config();
+  require('dotenv').config();
 }
 
 // ========================================================
@@ -59,62 +59,62 @@ let discoveredDevices = new Map();
 
 // Helper function
 function todayStr() {
-    return new Date().toISOString().slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
 }
 
 // ========================================================
 //                  WEBSOCKET HANDLERS
 // ========================================================
 wss.on('connection', (ws) => {
-    const clientId = uuidv4();
-    connectedClients.set(clientId, ws);
-    console.log(`Client connected: ${clientId}`);
-
-    ws.on('message', (message) => {
-        try {
-            const data = JSON.parse(message);
-            handleWebSocketMessage(clientId, data);
-        } catch (error) {
-            console.error('WebSocket message error:', error);
-        }
-    });
-
-    ws.on('close', () => {
-        connectedClients.delete(clientId);
-        console.log(`Client disconnected: ${clientId}`);
-    });
+  const clientId = uuidv4();
+  connectedClients.set(clientId, ws);
+  console.log(`Client connected: ${clientId}`);
+  
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      handleWebSocketMessage(clientId, data);
+    } catch (error) {
+      console.error('WebSocket message error:', error);
+    }
+  });
+  
+  ws.on('close', () => {
+    connectedClients.delete(clientId);
+    console.log(`Client disconnected: ${clientId}`);
+  });
 });
 
 function handleWebSocketMessage(clientId, data) {
-    switch (data.type) {
-        case 'BLUETOOTH_DEVICE_DISCOVERED':
-            handleDeviceDiscovery(clientId, data);
-            break;
-        case 'ATTENDANCE_REQUEST':
-            handleAttendanceRequest(clientId, data);
-            break;
-        case 'FACULTY_SCAN_START':
-            handleFacultyScanStart(clientId);
-            break;
-        case 'FACULTY_SCAN_STOP':
-            handleFacultyScanStop(clientId);
-            break;
-    }
+  switch (data.type) {
+    case 'BLUETOOTH_DEVICE_DISCOVERED':
+      handleDeviceDiscovery(clientId, data);
+      break;
+    case 'ATTENDANCE_REQUEST':
+      handleAttendanceRequest(clientId, data);
+      break;
+    case 'FACULTY_SCAN_START':
+      handleFacultyScanStart(clientId);
+      break;
+    case 'FACULTY_SCAN_STOP':
+      handleFacultyScanStop(clientId);
+      break;
+  }
 }
 
 function handleDeviceDiscovery(clientId, data) {
-    const { deviceId, deviceName, rssi, roll } = data;
-    discoveredDevices.set(deviceId, { deviceId, deviceName, rssi, roll, timestamp: Date.now(), clientId });
+  const { deviceId, deviceName, rssi, roll } = data;
+  discoveredDevices.set(deviceId, { deviceId, deviceName, rssi, roll, timestamp: Date.now(), clientId });
 
-    if (activeBluetoothSession && activeBluetoothSession.facultyClientId) {
-        const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
-        if (facultyWs) {
+  if (activeBluetoothSession && activeBluetoothSession.facultyClientId) {
+    const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
+    if (facultyWs) {
             facultyWs.send(JSON.stringify({
                 type: 'DEVICE_FOUND',
                 device: { deviceId, deviceName, rssi, roll }
             }));
-        }
     }
+  }
 }
 
 async function handleAttendanceRequest(clientId, data) {
@@ -129,7 +129,7 @@ async function handleAttendanceRequest(clientId, data) {
             message: 'Device not in range or signal too weak.'
         });
     }
-
+    
     try {
         const student = await User.findOne({ roll });
         if (!student) {
@@ -139,7 +139,7 @@ async function handleAttendanceRequest(clientId, data) {
                 message: 'Student not found.'
             });
         }
-
+        
         // If sessionId is provided, use new attendance system
         if (sessionId) {
             const session = await AttendanceSession.findById(sessionId);
@@ -166,7 +166,7 @@ async function handleAttendanceRequest(clientId, data) {
             const existingRecord = session.attendanceRecords.find(
                 record => record.studentRoll === roll && record.period === period
             );
-
+            
             if (existingRecord) {
                 return sendToClient(clientId, {
                     type: 'ATTENDANCE_RESPONSE',
@@ -184,19 +184,19 @@ async function handleAttendanceRequest(clientId, data) {
                 rssi: discoveredDevice.rssi
             });
             await session.save();
-
+            
             const facultyWs = connectedClients.get(activeBluetoothSession?.facultyClientId);
             if (facultyWs) {
-                facultyWs.send(JSON.stringify({
-                    type: 'ATTENDANCE_MARKED',
-                    roll,
+                facultyWs.send(JSON.stringify({ 
+                    type: 'ATTENDANCE_MARKED', 
+                    roll, 
                     deviceId,
                     rssi: discoveredDevice.rssi,
                     period,
                     sessionId
                 }));
             }
-
+            
             sendToClient(clientId, {
                 type: 'ATTENDANCE_RESPONSE',
                 success: true,
@@ -238,7 +238,7 @@ async function handleAttendanceRequest(clientId, data) {
                 success: true,
                 message: 'Attendance marked successfully!'
             });
-
+            
             const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
             if (facultyWs) {
                 facultyWs.send(JSON.stringify({
@@ -263,28 +263,28 @@ function handleFacultyScanStart(clientId) {
         facultyClientId: clientId,
         startTime: Date.now()
     };
-    discoveredDevices.clear();
+  discoveredDevices.clear();
     sendToClient(clientId, {
         type: 'SCAN_STARTED',
         message: 'Bluetooth scanning started...'
     });
-    console.log('Faculty started Bluetooth scanning');
+  console.log('Faculty started Bluetooth scanning');
 }
 
 function handleFacultyScanStop(clientId) {
-    activeBluetoothSession = null;
+  activeBluetoothSession = null;
     sendToClient(clientId, {
         type: 'SCAN_STOPPED',
         message: 'Bluetooth scanning stopped.'
     });
-    console.log('Faculty stopped Bluetooth scanning');
+  console.log('Faculty stopped Bluetooth scanning');
 }
 
 function sendToClient(clientId, message) {
-    const ws = connectedClients.get(clientId);
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(message));
-    }
+  const ws = connectedClients.get(clientId);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(message));
+  }
 }
 
 // ========================================================
@@ -293,25 +293,25 @@ function sendToClient(clientId, message) {
 
 // --- Main App Route ---
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'classsyncc.html'));
+  res.sendFile(path.join(__dirname, 'classsyncc.html'));
 });
 
 // --- Authentication ---
 app.post('/api/login', async (req, res) => {
-    try {
-        const { role, roll, password } = req.body;
+  try {
+    const { role, roll, password } = req.body;
         const user = await User.findOne({ roll, role });
-        
+
         if (!user || user.password !== password) { // Still plaintext, but now using Mongoose
-            return res.json({ success: false, message: 'Invalid credentials.' });
-        }
+      return res.json({ success: false, message: 'Invalid credentials.' });
+    }
 
         const { password: _, ...userPayload } = user.toObject();
-        res.json({ success: true, user: userPayload });
-    } catch (error) {
-        console.error('Login API Error:', error);
-        res.status(500).json({ success: false, message: 'Server error.' });
-    }
+    res.json({ success: true, user: userPayload });
+  } catch (error) {
+    console.error('Login API Error:', error);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
 });
 
 // --- Timetable Endpoints ---
@@ -356,13 +356,13 @@ app.post('/api/faculty/names', async (req, res) => {
         if (!Array.isArray(facultyIds)) {
             return res.status(400).json({ success: false, message: 'Invalid faculty IDs provided.' });
         }
-
+        
         const faculty = await User.find({ roll: { $in: facultyIds }, role: 'faculty' });
         const facultyNames = {};
         faculty.forEach(f => {
             facultyNames[f.roll] = f.name || f.roll;
         });
-
+        
         res.json({ success: true, facultyNames });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Server error' });
@@ -376,107 +376,107 @@ const START_TIME_TO_PERIOD = {
 };
 
 function startTimeToPeriod(startTime) {
-    const normalized = String(startTime).split(' ')[0];
-    return START_TIME_TO_PERIOD[normalized];
+  const normalized = String(startTime).split(' ')[0];
+  return START_TIME_TO_PERIOD[normalized];
 }
 
 async function getOrCreateClassForMapping({ subject, branch, year, section, semester, facultyId, periods }) {
     let existing = await Class.findOne({ subject, branch, year: Number(year), section, semester, facultyId });
-    if (!existing) {
+  if (!existing) {
         existing = await Class.create({
-            subject,
-            branch,
+      subject,
+      branch,
             year: Number(year),
             semester: semester || 'I Semester',
-            section,
-            periods: Array.from(new Set(periods || [])),
-            facultyId,
-            students: [],
-        });
-    }
-    return existing;
+      section,
+      periods: Array.from(new Set(periods || [])),
+      facultyId,
+      students: [],
+    });
+  }
+  return existing;
 }
 
 // THIS IS THE FIXED ENDPOINT THAT CAUSED THE ORIGINAL ERROR
 app.get('/api/faculty/classes/:facultyId', async (req, res) => {
-    try {
-        const { facultyId } = req.params;
+  try {
+    const { facultyId } = req.params;
         const facultyUser = await User.findOne({ roll: facultyId, role: 'faculty' });
         
-        const candidateIds = [facultyId];
-        if (facultyUser && facultyUser.name) candidateIds.push(facultyUser.name);
+    const candidateIds = [facultyId];
+    if (facultyUser && facultyUser.name) candidateIds.push(facultyUser.name);
         
         const regexes = candidateIds.map(v => new RegExp(`^${String(v).trim()}$`, 'i'));
         const timetable = await Timetable.find({ facultyId: { $in: regexes } });
 
-        if (!timetable || timetable.length === 0) {
-            return res.json({ success: true, classes: [] });
-        }
+    if (!timetable || timetable.length === 0) {
+      return res.json({ success: true, classes: [] });
+    }
 
-        const grouped = new Map();
-        for (const row of timetable) {
+    const grouped = new Map();
+    for (const row of timetable) {
             const key = `${row.subject}|${row.branch}|${row.year}|${row.section}|${row.semester || ''}`;
-            if (!grouped.has(key)) {
+      if (!grouped.has(key)) {
                 grouped.set(key, { ...row.toObject(), periods: new Set() });
-            }
+      }
             const period = startTimeToPeriod(row.startTime);
-            if (period) grouped.get(key).periods.add(period);
-        }
+      if (period) grouped.get(key).periods.add(period);
+    }
 
-        const classes = [];
-        for (const [, value] of grouped) {
-            const clsDoc = await getOrCreateClassForMapping({
+    const classes = [];
+    for (const [, value] of grouped) {
+      const clsDoc = await getOrCreateClassForMapping({
                 ...value,
-                facultyId,
+        facultyId,
                 periods: Array.from(value.periods)
             });
             classes.push(clsDoc);
-        }
-
-        res.json({ success: true, classes });
-    } catch (error) {
-        console.error('Error fetching faculty classes:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch classes' });
     }
+
+    res.json({ success: true, classes });
+  } catch (error) {
+    console.error('Error fetching faculty classes:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch classes' });
+  }
 });
 
 app.get('/api/faculty/class/:classId/students', async (req, res) => {
-    try {
-        const { classId } = req.params;
-        const cls = await Class.findById(classId);
+  try {
+    const { classId } = req.params;
+    const cls = await Class.findById(classId);
         if (!cls) return res.status(404).json({ success: false, error: 'Class not found' });
 
         const students = await User.find({
-            role: 'student',
-            branch: cls.branch,
-            year: cls.year,
+      role: 'student',
+      branch: cls.branch,
+      year: cls.year,
             section: cls.section
         });
 
         res.json({ success: true, students, classData: cls });
-    } catch (error) {
-        res.status(500).json({ success: false, error: 'Failed to fetch students' });
-    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch students' });
+  }
 });
 
 app.post('/api/faculty/attendance/session', async (req, res) => {
-    try {
-        const { classId, date, periods, facultyId } = req.body;
-        
+  try {
+    const { classId, date, periods, facultyId } = req.body;
+    
         const existingSession = await AttendanceSession.findOne({ classId, date });
-        if (existingSession) {
+    if (existingSession) {
             return res.status(400).json({ success: false, message: 'Session already exists for this class today.' });
-        }
-
+    }
+    
         const session = await AttendanceSession.create({
-            classId,
-            date,
-            periods,
-            facultyId
-        });
-
-        res.json({ success: true, sessionId: session._id, message: 'Attendance session created.' });
-    } catch (error) {
+      classId,
+      date,
+      periods,
+      facultyId
+    });
+    
+    res.json({ success: true, sessionId: session._id, message: 'Attendance session created.' });
+  } catch (error) {
         res.status(500).json({ success: false, message: 'Failed to create session.' });
     }
 });
@@ -487,6 +487,39 @@ app.post('/api/faculty/attendance/session', async (req, res) => {
 // ========================================================
 //                  NEW ADMIN ATTENDANCE ENDPOINTS
 // ========================================================
+
+/**
+ * DYNAMIC FILTER OPTIONS ENDPOINT
+ * Fetches unique values for filter dropdowns based on parent selections.
+ * Example Usage:
+ * - /api/filter-options?field=semester
+ * - /api/filter-options?field=branch&semester=I%20Semester
+ * - /api/filter-options?field=subject&semester=I%20Semester&branch=IT&year=2
+ */
+app.get('/api/filter-options', async (req, res) => {
+    try {
+        const { field, semester, branch, year, section } = req.query;
+
+        if (!field) {
+            return res.status(400).json({ success: false, message: 'A "field" parameter is required.' });
+        }
+
+        // Build the filter query based on provided parent filters
+        const filterQuery = {};
+        if (semester) filterQuery.semester = semester;
+        if (branch) filterQuery.branch = branch;
+        if (year) filterQuery.year = Number(year);
+        if (section) filterQuery.section = section;
+
+        // Use .distinct() to get unique values for the requested field
+        const options = await Timetable.distinct(field, filterQuery).sort();
+
+        res.json({ success: true, options });
+
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Failed to fetch filter options.' });
+    }
+});
 
 /**
  * NEW DYNAMIC FILTER ENDPOINT
@@ -579,22 +612,22 @@ app.post('/api/admin/attendance/summary', async (req, res) => {
 //                  SERVER INITIALIZATION
 // ========================================================
 async function initializeServer() {
-    try {
+  try {
         await connectToMongoDB(); // Connect using Mongoose
-        server.listen(PORT, () => {
-            config.logConfig();
-            console.log(`🚀 ClassSync Server running on port ${PORT}`);
-        });
-    } catch (error) {
-        console.error('❌ Failed to initialize server:', error);
-        process.exit(1);
-    }
+    server.listen(PORT, () => {
+      config.logConfig();
+      console.log(`🚀 ClassSync Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('❌ Failed to initialize server:', error);
+    process.exit(1);
+  }
 }
 
 initializeServer();
 
 process.on('SIGINT', async () => {
-    console.log('\n🛑 Shutting down server...');
-    await closeMongoDBConnection();
-    process.exit(0);
+  console.log('\n🛑 Shutting down server...');
+  await closeMongoDBConnection();
+  process.exit(0);
 });

@@ -1113,79 +1113,120 @@ function setupFacultyAttendanceUI() {
 
 function initializeAdminAttendanceDashboard() {
     // Set default date to today
-    const dateSelect = document.getElementById('admin-date-select');
-    if (dateSelect) {
-        dateSelect.value = new Date().toISOString().split('T')[0];
-    }
+    document.getElementById('admin-date-select').value = new Date().toISOString().split('T')[0];
     
-    // Populate period checkboxes
+    // Populate period checkboxes (this part is static)
     const periodsContainer = document.getElementById('admin-periods-checkboxes');
-    periodsContainer.innerHTML = '';
-    for (let i = 1; i <= 7; i++) {
-        periodsContainer.innerHTML += `
-            <label class="flex items-center gap-2">
-                <input type="checkbox" value="${i}" class="admin-period-cb h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                <span>Period ${i}</span>
-            </label>
-        `;
+    if (periodsContainer) {
+        periodsContainer.innerHTML = '';
+        for (let i = 1; i <= 7; i++) {
+            periodsContainer.innerHTML += `
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" value="${i}" class="admin-period-cb h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                    <span>Period ${i}</span>
+                </label>
+            `;
+        }
     }
 
-    // Populate dropdowns with static options
-    populateSelect('admin-semester-select', ['I Semester', 'II Semester']);
-    populateSelect('admin-branch-select', ['IT', 'CSE', 'ECE', 'MECH', 'CIVIL', 'EEE', 'MCA']);
-    populateSelect('admin-year-select', ['1', '2', '3', '4']);
-    populateSelect('admin-section-select', ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
-    
-    // Setup event listeners for ALL filters that affect the subject list
-    document.getElementById('admin-semester-select').addEventListener('change', updateAvailableSubjects);
-    document.getElementById('admin-branch-select').addEventListener('change', updateAvailableSubjects);
-    document.getElementById('admin-year-select').addEventListener('change', updateAvailableSubjects);
-    document.getElementById('admin-view-btn').addEventListener('click', handleAdminViewClick);
-    document.getElementById('admin-download-summary-btn')?.addEventListener('click', handleAdminDownloadClick);
-    
-    // Initial call to populate subjects if values are pre-selected
-    updateAvailableSubjects();
-}
-
-function populateSelect(elementId, options) {
-    const select = document.getElementById(elementId);
-    select.innerHTML = '<option value="">All</option>'; // Default "All" option
-    options.forEach(opt => {
-        const option = document.createElement('option');
-        option.value = opt;
-        option.textContent = opt;
-        select.appendChild(option);
-    });
-}
-
-async function updateAvailableSubjects() {
-    const semester = document.getElementById('admin-semester-select').value;
-    const branch = document.getElementById('admin-branch-select').value;
-    const year = document.getElementById('admin-year-select').value;
+    // Define the filter elements
+    const semesterSelect = document.getElementById('admin-semester-select');
+    const branchSelect = document.getElementById('admin-branch-select');
+    const yearSelect = document.getElementById('admin-year-select');
+    const sectionSelect = document.getElementById('admin-section-select');
     const subjectSelect = document.getElementById('admin-subject-select');
-    
-    // Only fetch subjects if all three dependent filters have a value
-    if (!semester || !branch || !year) {
-        subjectSelect.innerHTML = '<option value="">-- Select Semester, Branch & Year --</option>';
-        return;
+    const viewBtn = document.getElementById('admin-view-btn');
+
+    // Setup the cascading event listeners
+    semesterSelect.addEventListener('change', () => {
+        populateFilterDropdown('admin-branch-select', { semester: semesterSelect.value });
+    });
+    branchSelect.addEventListener('change', () => {
+        populateFilterDropdown('admin-year-select', { semester: semesterSelect.value, branch: branchSelect.value });
+    });
+    yearSelect.addEventListener('change', () => {
+        populateFilterDropdown('admin-section-select', { semester: semesterSelect.value, branch: branchSelect.value, year: yearSelect.value });
+    });
+    sectionSelect.addEventListener('change', () => {
+        populateFilterDropdown('admin-subject-select', { semester: semesterSelect.value, branch: branchSelect.value, year: yearSelect.value, section: sectionSelect.value });
+    });
+
+    // Add listener for the view button
+    if(viewBtn) {
+       viewBtn.addEventListener('click', handleAdminViewClick);
     }
+
+    // Start the cascade by populating the first filter (Semesters)
+    populateFilterDropdown('admin-semester-select', {});
+}
+
+// Generic function to populate any filter dropdown
+async function populateFilterDropdown(elementId, filters) {
+    const selectElement = document.getElementById(elementId);
+    const field = elementId.replace('admin-', '').replace('-select', ''); // e.g., 'admin-branch-select' -> 'branch'
     
-    subjectSelect.innerHTML = '<option value="">Loading...</option>';
+    // Reset subsequent dropdowns in the chain
+    resetSubsequentFilters(field);
+
+    selectElement.innerHTML = '<option value="">Loading...</option>';
+    selectElement.disabled = true;
 
     try {
-        const query = new URLSearchParams({ semester, branch, year }).toString();
-        const response = await fetch(`/api/subjects?${query}`);
+        const query = new URLSearchParams({ field, ...filters }).toString();
+        const response = await fetch(`/api/filter-options?${query}`);
         const result = await response.json();
-        
-        if (result.success && result.subjects.length > 0) {
-            populateSelect('admin-subject-select', result.subjects);
-        } else {
-            subjectSelect.innerHTML = '<option value="">-- No Subjects Found --</option>';
+
+        if (result.success) {
+            selectElement.innerHTML = '<option value="">All</option>';
+            if (result.options.length > 0) {
+                result.options.forEach(option => {
+                    selectElement.innerHTML += `<option value="${option}">${option}</option>`;
+                });
+            } else {
+                selectElement.innerHTML = '<option value="">No options found</option>';
+            }
         }
     } catch (error) {
-        console.error("Failed to fetch subjects:", error);
-        subjectSelect.innerHTML = '<option value="">Error loading subjects</option>';
+        selectElement.innerHTML = '<option value="">Error</option>';
+        console.error(`Failed to populate ${field}:`, error);
+    } finally {
+        selectElement.disabled = false;
     }
+}
+
+// Helper function to reset child filters when a parent filter changes
+function resetSubsequentFilters(changedField) {
+    const filterChain = ['semester', 'branch', 'year', 'section', 'subject'];
+    const startIndex = filterChain.indexOf(changedField) + 1;
+    
+    for (let i = startIndex; i < filterChain.length; i++) {
+        const elementId = `admin-${filterChain[i]}-select`;
+        const selectElement = document.getElementById(elementId);
+        if (selectElement) {
+            selectElement.innerHTML = `<option value="">-- Select ${filterChain[i-1]} first --</option>`;
+        }
+    }
+}
+
+// This function is now much simpler as it just reads the final values
+function getAdminFilters() {
+    const periods = Array.from(document.querySelectorAll('.admin-period-cb:checked')).map(cb => Number(cb.value));
+    const date = document.getElementById('admin-date-select').value;
+
+    if (!date || periods.length === 0) {
+        alert('Please select a date and at least one period.');
+        return null;
+    }
+
+    return {
+        date,
+        periods,
+        semester: document.getElementById('admin-semester-select').value,
+        branch: document.getElementById('admin-branch-select').value,
+        year: document.getElementById('admin-year-select').value,
+        section: document.getElementById('admin-section-select').value,
+        subject: document.getElementById('admin-subject-select').value,
+    };
 }
 
 async function handleAdminViewClick() {
@@ -1218,7 +1259,7 @@ function renderAdminSummary(summaryData, absenteesData) {
     const tbody = document.getElementById('admin-summary-tbody');
     const absenteesContainer = document.getElementById('admin-absentees-output');
     tbody.innerHTML = '';
-    absenteesContainer.innerHTML = ''; // Clear previous absentees
+    absenteesContainer.innerHTML = ''; 
 
     if (summaryData.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" class="text-center p-8 text-gray-500">No data found for the selected filters.</td></tr>`;
@@ -1254,26 +1295,6 @@ function renderAdminSummary(summaryData, absenteesData) {
             absenteesContainer.appendChild(div);
         }
     }
-}
-
-function getAdminFilters() {
-    const periods = Array.from(document.querySelectorAll('.admin-period-cb:checked')).map(cb => Number(cb.value));
-    const date = document.getElementById('admin-date-select').value;
-
-    if (!date || periods.length === 0) {
-        alert('Please select a date and at least one period.');
-        return null;
-    }
-
-    return {
-        date,
-        periods,
-        semester: document.getElementById('admin-semester-select').value,
-        branch: document.getElementById('admin-branch-select').value,
-        year: document.getElementById('admin-year-select').value,
-        section: document.getElementById('admin-section-select').value,
-        subject: document.getElementById('admin-subject-select').value,
-    };
 }
 
 // Function for the download button (to be implemented)

@@ -751,28 +751,28 @@ function loadAttendanceContent() {
                 
                 <!-- Legacy Interface (Hidden by default) -->
                 <div id="legacy-faculty-interface" class="hidden">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
                             <h3 class="text-xl font-bold mb-4">Legacy Attendance Session</h3>
-                            <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4">
-                                <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
-                            </button>
+                        <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4">
+                            <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
+                        </button>
                             <div id="bluetooth-status-legacy" class="p-3 bg-gray-100 rounded-lg mb-4"></div>
-                            <div>
-                                <h4 class="font-semibold mb-2">Manual Attendance</h4>
-                                <div class="flex gap-2">
-                                    <input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg">
-                                    <button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                        Add
-                                    </button>
-                                </div>
+                        <div>
+                            <h4 class="font-semibold mb-2">Manual Attendance</h4>
+                            <div class="flex gap-2">
+                                <input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg">
+                                <button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                    Add
+                                </button>
                             </div>
                         </div>
-                        <div>
-                            <h4 class="font-semibold mb-2">Discovered Devices</h4>
-                            <ul id="discovered-devices-list" class="space-y-2"></ul>
-                            <h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4>
-                            <div id="faculty-attendance-list" class="space-y-2"></div>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold mb-2">Discovered Devices</h4>
+                        <ul id="discovered-devices-list" class="space-y-2"></ul>
+                        <h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4>
+                        <div id="faculty-attendance-list" class="space-y-2"></div>
                         </div>
                     </div>
                 </div>
@@ -1485,27 +1485,27 @@ async function loadClassStudents() {
                     </div>
                 `;
             } else {
-                data.students.forEach((student, index) => {
-                    const studentDiv = document.createElement('div');
-                    studentDiv.className = 'p-3 border border-gray-200 rounded-lg flex justify-between items-center';
-                    studentDiv.innerHTML = `
-                        <div>
-                            <span class="font-medium">${index + 1}.</span>
-                            <span class="font-medium">${student.name}</span>
-                            <span class="text-sm text-gray-500">(${student.roll})</span>
-                        </div>
-                        <div class="flex gap-2">
-                            ${selectedPeriods.map(period => `
-                                <button onclick="markStudentAttendance('${student.roll}', ${period})" 
-                                        class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 attendance-btn" 
-                                        data-student="${student.roll}" data-period="${period}">
-                                    Period ${period}
-                                </button>
-                            `).join('')}
-                        </div>
-                    `;
-                    studentsList.appendChild(studentDiv);
-                });
+            data.students.forEach((student, index) => {
+                const studentDiv = document.createElement('div');
+                studentDiv.className = 'p-3 border border-gray-200 rounded-lg flex justify-between items-center';
+                studentDiv.innerHTML = `
+                    <div>
+                        <span class="font-medium">${index + 1}.</span>
+                        <span class="font-medium">${student.name}</span>
+                        <span class="text-sm text-gray-500">(${student.roll})</span>
+                    </div>
+                    <div class="flex gap-2">
+                        ${selectedPeriods.map(period => `
+                            <button onclick="markStudentAttendance('${student.roll}', ${period})" 
+                                    class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 attendance-btn" 
+                                    data-student="${student.roll}" data-period="${period}">
+                                Period ${period}
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+                studentsList.appendChild(studentDiv);
+            });
             }
             
             // Show session controls
@@ -1609,16 +1609,16 @@ async function startEnhancedAttendanceSession() {
             const bluetoothStatus = document.getElementById('bluetooth-status');
             if (bluetoothStatus) {
                 bluetoothStatus.innerHTML = `
-                    <div class="text-green-600 font-medium">
-                        <i class="fas fa-bluetooth mr-2"></i>Session Active - Scanning for devices...
-                    </div>
-                    <div class="text-sm text-gray-600 mt-2">
-                        Class: ${currentClassData.subject} | Periods: ${currentPeriods.join(', ')} | Date: ${date}
-                    </div>
+                <div class="text-green-600 font-medium">
+                    <i class="fas fa-bluetooth mr-2"></i>Session Active - Scanning for devices...
+                </div>
+                <div class="text-sm text-gray-600 mt-2">
+                    Class: ${currentClassData.subject} | Periods: ${currentPeriods.join(', ')} | Date: ${date}
+                </div>
                     <div class="text-sm text-blue-600 mt-2">
                         Session ID: ${currentSessionId}
                     </div>
-                `;
+            `;
             }
             
             // Start WebSocket scanning
@@ -1651,13 +1651,13 @@ function stopEnhancedAttendanceSession() {
     const bluetoothStatus = document.getElementById('bluetooth-status');
     if (bluetoothStatus) {
         bluetoothStatus.innerHTML = `
-            <div class="text-red-600 font-medium">
-                <i class="fas fa-stop mr-2"></i>Session Stopped
-            </div>
+        <div class="text-red-600 font-medium">
+            <i class="fas fa-stop mr-2"></i>Session Stopped
+        </div>
             <div class="text-sm text-gray-600 mt-2">
                 Bluetooth scanning has been stopped
             </div>
-        `;
+    `;
     }
     
     // Stop WebSocket scanning
@@ -1715,10 +1715,10 @@ async function updateAttendanceRecords() {
                 recordDiv.innerHTML = `
                     <div class="flex justify-between items-center">
                         <div>
-                            <strong>Student:</strong> ${record.studentRoll} | 
-                            <strong>Period:</strong> ${record.period} | 
+                    <strong>Student:</strong> ${record.studentRoll} | 
+                    <strong>Period:</strong> ${record.period} | 
                             <strong>Status:</strong> <span class="text-green-600">${record.status}</span> | 
-                            <strong>Method:</strong> ${record.method}
+                    <strong>Method:</strong> ${record.method}
                         </div>
                         <div class="text-xs text-gray-500">
                             ${new Date(record.timestamp).toLocaleTimeString()}
@@ -1764,4 +1764,4 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(attendanceUpdateInterval);
         }
     });
-});
+}); 
