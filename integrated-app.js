@@ -208,15 +208,117 @@ function loadAttendanceContent() {
         content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
         loadStudentAttendanceSummary(currentUser.roll);
     } else if (currentRole === 'faculty') {
-        // Show the new faculty form placed in HTML
-        const form = document.getElementById('faculty-attendance-form');
-        if (form) form.classList.remove('hidden');
-        setupFacultyAttendanceUI();
+        // Render simplified faculty dashboard UI with a class selector
+        content.innerHTML = `
+            <div class="p-4 bg-gray-50 rounded-lg border">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-x-6 gap-y-4 items-end">
+                    <div class="md:col-span-2">
+                        <label for="faculty-class-select" class="block text-sm font-medium">Select Your Class</label>
+                        <select id="faculty-class-select" class="mt-1 block w-full py-2 px-3 border rounded-md">
+                            <option value="">Loading your classes...</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="faculty-date-select" class="block text-sm font-medium">Date</label>
+                        <input type="date" id="faculty-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md">
+                    </div>
+
+                    <div>
+                        <button id="faculty-view-btn" class="w-full px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">
+                            <i class="fas fa-users mr-2"></i>Show Students
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="faculty-attendance-output" class="mt-6 hidden">
+                <hr class="my-6">
+                <div id="student-list-container"></div>
+            </div>
+        `;
+        // Initialize the new faculty dashboard logic
+        initializeFacultyAttendanceDashboard();
     } else if (currentRole === 'admin') {
         // For admin, we don't need to load HTML from JS anymore since it's in classsyncc.html
         // We just need to initialize the dynamic parts.
         initializeAdminAttendanceDashboard();
     }
+}
+
+// ==============================
+// Faculty Dashboard (Attendance)
+// ==============================
+function initializeFacultyAttendanceDashboard() {
+    // Set default date to today
+    const dateSelect = document.getElementById('faculty-date-select');
+    if (dateSelect) {
+        dateSelect.value = new Date().toISOString().split('T')[0];
+    }
+    // Hook button
+    document.getElementById('faculty-view-btn')?.addEventListener('click', handleFacultyShowStudents);
+    // Populate classes for the logged-in faculty
+    populateFacultyClassDropdown();
+}
+
+async function populateFacultyClassDropdown() {
+    const classSelect = document.getElementById('faculty-class-select');
+    if (!classSelect) return;
+    if (!currentUser || !currentUser.roll) {
+        classSelect.innerHTML = `<option value="">Error: Not logged in</option>`;
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/faculty/classes/${currentUser.roll}`);
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+        const result = await response.json();
+        if (result.success) {
+            if (Array.isArray(result.classes) && result.classes.length > 0) {
+                classSelect.innerHTML = '<option value="">-- Select a Class --</option>';
+                result.classes.forEach(cls => {
+                    const label = `${cls.subject}  |  ${cls.branch} - ${cls.year} ${cls.section} (${cls.semester || ''})`;
+                    const value = JSON.stringify({
+                        subject: cls.subject,
+                        branch: cls.branch,
+                        year: cls.year,
+                        section: cls.section,
+                        semester: cls.semester
+                    });
+                    classSelect.innerHTML += `<option value='${value}'>${label}</option>`;
+                });
+            } else {
+                classSelect.innerHTML = '<option value="">-- No classes assigned in timetable --</option>';
+            }
+        } else {
+            throw new Error(result.message || 'Failed to load classes');
+        }
+    } catch (error) {
+        classSelect.innerHTML = '<option value="">⚠️ Error loading classes</option>';
+        console.error('[FACULTY] Error fetching classes:', error);
+    }
+}
+
+async function handleFacultyShowStudents() {
+    const classSelect = document.getElementById('faculty-class-select');
+    const outputDiv = document.getElementById('faculty-attendance-output');
+    const studentListContainer = document.getElementById('student-list-container');
+    if (!classSelect || !outputDiv || !studentListContainer) return;
+
+    if (!classSelect.value) {
+        alert('Please select a class first.');
+        return;
+    }
+
+    const classData = JSON.parse(classSelect.value);
+    outputDiv.classList.remove('hidden');
+    studentListContainer.innerHTML = `<p class="text-center p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Loading students for ${classData.subject}...</p>`;
+
+    // Placeholder: integrate with detailed student fetch next
+    console.log('Selected class data:', classData);
+    setTimeout(() => {
+        studentListContainer.innerHTML = `<p class="text-center p-4 font-semibold">Student list for ${classData.branch} ${classData.year}-${classData.section} would be displayed here.</p>`;
+    }, 1000);
 }
 
 // --- TIMETABLE SECTION ---
