@@ -1,67 +1,265 @@
-// ClassSync Integrated Dashboard JavaScript
+// ========================================================
+//          ClassSync Unified Dashboard Script
+// ========================================================
 
 // Global variables
 let currentUser = null;
-let currentRole = 'student';
+let currentRole = null;
 let ws = null;
-let bluetoothDevice = null;
-let isBluetoothSupported = false;
-let currentSessionId = null;
-let currentClassData = null;
-let currentPeriods = [];
-let attendanceUpdateInterval = null;
 
-// Check Bluetooth support
-if (navigator.bluetooth) {
-    isBluetoothSupported = true;
-    console.log('Web Bluetooth API is supported');
-} else {
-    console.log('Web Bluetooth API is not supported');
+// ========================================================
+//          INITIALIZATION & CORE APP LOGIC
+// ========================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('login-form')?.addEventListener('submit', handleLogin);
+    // Add other permanent event listeners here if needed
+});
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const role = document.getElementById('role').value;
+    const roll = document.getElementById('roll').value.trim();
+    const password = document.getElementById('password').value;
+    const loginError = document.getElementById('login-error');
+    loginError.classList.add('hidden');
+
+    try {
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role, roll, password })
+        });
+        const data = await response.json();
+        if (data.success) {
+            currentUser = data.user;
+            currentRole = role;
+            showDashboard();
+        } else {
+            loginError.textContent = data.message || 'Login failed.';
+            loginError.classList.remove('hidden');
+        }
+    } catch (error) {
+        loginError.textContent = 'Network error. Please try again.';
+        loginError.classList.remove('hidden');
+    }
 }
 
-// Initialize login form
-document.addEventListener('DOMContentLoaded', () => {
-    const loginForm = document.getElementById('login-form');
-    if (loginForm) {
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const role = document.getElementById('role').value;
-            const roll = document.getElementById('roll').value.trim();
-            const password = document.getElementById('password').value;
-            const loginError = document.getElementById('login-error');
-            loginError.classList.add('hidden');
+function showDashboard() {
+    document.getElementById('login-container').classList.add('hidden');
+    document.getElementById('dashboard-container').classList.remove('hidden');
+    
+    // Update user info in sidebar/header
+    const displayName = currentUser.name || `User: ${currentUser.roll}`;
+    const roleDisplay = currentRole.charAt(0).toUpperCase() + currentRole.slice(1);
+    document.getElementById('userName').textContent = displayName;
+    document.getElementById('userRole').textContent = roleDisplay;
+    document.getElementById('headerUserName').textContent = displayName.split(' ')[0];
 
-            if (!role || !roll || !password) {
-                loginError.textContent = 'Please fill in all fields.';
-                loginError.classList.remove('hidden');
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ role, roll, password })
+    // Show the correct view based on role
+    ['studentView', 'facultyView', 'adminView'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    document.getElementById(`${currentRole}View`).classList.remove('hidden');
+    
+    // Navigate to the main dashboard view
+    showSection('dashboard');
+    initMobileMenu();
+}
+
+function showSection(section) {
+    // Hide all main sections
+    ['dashboardSection', 'attendanceSection', 'timetableSection', 'notificationsSection'].forEach(s => {
+        document.getElementById(s).classList.add('hidden');
+    });
+    // Show the requested section
+    document.getElementById(`${section}Section`).classList.remove('hidden');
+    document.getElementById('pageTitle').textContent = section.charAt(0).toUpperCase() + section.slice(1);
+
+    // Load the content for the visible section
+    if (section === 'attendance') {
+        loadAttendanceContent();
+    }
+    // Add other content loaders here if needed (e.g., for timetable)
+}
+
+// ========================================================
+//          DYNAMIC CONTENT LOADER FOR ATTENDANCE
+// ========================================================
+
+function loadAttendanceContent() {
+    const attendanceContainer = document.getElementById('attendanceSection');
+    attendanceContainer.innerHTML = ''; // Clear any old content
+
+    if (currentRole === 'admin') {
+        // Inject the Admin UI HTML into the container
+        attendanceContainer.innerHTML = `
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <div class="gradient-bg p-4 text-white -m-6 mb-6 rounded-t-xl"><h2 class="text-xl font-bold">Daily Attendance Summary</h2></div>
+                <div class="p-4 bg-gray-50 rounded-lg border">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-x-6 gap-y-4">
+                        <div><label for="admin-branch-select" class="block text-sm font-medium">Branch</label><select id="admin-branch-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label for="admin-year-select" class="block text-sm font-medium">Year</label><select id="admin-year-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label for="admin-section-select" class="block text-sm font-medium">Section</label><select id="admin-section-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label for="admin-semester-select" class="block text-sm font-medium">Semester</label><select id="admin-semester-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label for="admin-date-select" class="block text-sm font-medium">Date</label><input type="date" id="admin-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
+                    </div>
+                    <div class="mt-4 pt-4 border-t"><div class="flex justify-between items-center"><div class="flex items-center"><label class="block text-sm font-medium mr-4">Periods:</label><div id="admin-periods-checkboxes" class="flex flex-wrap gap-x-6 gap-y-2"></div></div><button id="admin-view-btn" class="px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700"><i class="fas fa-eye mr-2"></i>View</button></div></div>
+                </div>
+            </div>`;
+        // Now that the HTML exists, run the JavaScript for it
+        initializeAdminAttendanceDashboard();
+
+    } else if (currentRole === 'faculty') {
+        // Inject the Faculty UI HTML into the container
+        attendanceContainer.innerHTML = `
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h3 class="text-xl font-bold mb-4">Take Attendance</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+                    <div>
+                        <label for="faculty-class-select" class="block text-sm font-medium text-gray-700">Select Your Class</label>
+                        <select id="faculty-class-select" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">Loading...</option></select>
+                    </div>
+                    <div>
+                        <button id="faculty-show-students-btn" class="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"><i class="fas fa-search mr-2"></i>Show Students</button>
+                    </div>
+                </div>
+            </div>
+            <div id="faculty-session-div" class="hidden">
+                </div>`;
+        // Now that the HTML exists, run the JavaScript for it
+        initializeFacultyAttendanceDashboard();
+    }
+}
+
+// ========================================================
+//          ADMIN ATTENDANCE LOGIC
+// ========================================================
+
+function initializeAdminAttendanceDashboard() {
+    document.getElementById('admin-date-select').value = new Date().toISOString().split('T')[0];
+    const periodsContainer = document.getElementById('admin-periods-checkboxes');
+    periodsContainer.innerHTML = '';
+    for (let i = 1; i <= 7; i++) {
+        periodsContainer.innerHTML += `<label class="flex items-center gap-2"><input type="checkbox" value="${i}" class="admin-period-cb h-4 w-4"><span>P${i}</span></label>`;
+    }
+
+    const branchSelect = document.getElementById('admin-branch-select');
+    const yearSelect = document.getElementById('admin-year-select');
+    const sectionSelect = document.getElementById('admin-section-select');
+    
+    branchSelect.addEventListener('change', () => populateFilterDropdown('admin-year-select', { branch: branchSelect.value }));
+    yearSelect.addEventListener('change', () => populateFilterDropdown('admin-section-select', { branch: branchSelect.value, year: yearSelect.value }));
+    sectionSelect.addEventListener('change', () => populateFilterDropdown('admin-semester-select', { branch: branchSelect.value, year: yearSelect.value, section: sectionSelect.value }));
+
+    document.getElementById('admin-view-btn')?.addEventListener('click', handleAdminViewClick);
+    populateFilterDropdown('admin-branch-select', {});
+}
+
+async function populateFilterDropdown(elementId, filters) {
+    const selectElement = document.getElementById(elementId);
+    const field = elementId.replace('admin-', '').replace('-select', ''); 
+    resetSubsequentFilters(field);
+    selectElement.innerHTML = '<option value="">Loading...</option>';
+    selectElement.disabled = true;
+
+    try {
+        const query = new URLSearchParams({ field, ...filters }).toString();
+        const response = await fetch(`/api/filter-options?${query}`);
+        if (!response.ok) throw new Error(`Server error! Status: ${response.status}`);
+        const result = await response.json();
+        if (result.success) {
+            selectElement.innerHTML = '<option value="">All</option>';
+            result.options.forEach(option => {
+                selectElement.innerHTML += `<option value="${option}">${option}</option>`;
+            });
+        } else {
+             throw new Error(result.message);
+        }
+    } catch (error) {
+        selectElement.innerHTML = `<option value="">⚠️ Error</option>`;
+    } finally {
+        selectElement.disabled = false;
+    }
+}
+
+function resetSubsequentFilters(changedField) {
+    const filterChain = ['branch', 'year', 'section', 'semester'];
+    const startIndex = filterChain.indexOf(changedField) + 1;
+    for (let i = startIndex; i < filterChain.length; i++) {
+        const selectElement = document.getElementById(`admin-${filterChain[i]}-select`);
+        if (selectElement) {
+            selectElement.innerHTML = `<option value="">-- Select ${filterChain[i-1]} --</option>`;
+            selectElement.disabled = true;
+        }
+    }
+}
+
+function handleAdminViewClick() { /* This function can be added later */ console.log("View clicked!"); }
+
+// ========================================================
+//          FACULTY ATTENDANCE LOGIC
+// ========================================================
+
+function initializeFacultyAttendanceDashboard() {
+    document.getElementById('faculty-show-students-btn')?.addEventListener('click', handleFacultyShowStudents);
+    populateFacultyClassDropdown();
+}
+
+async function populateFacultyClassDropdown() {
+    const classSelect = document.getElementById('faculty-class-select');
+    if (!classSelect || !currentUser) return;
+
+    try {
+        const response = await fetch(`/api/faculty/classes/${currentUser.roll}`);
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+        const result = await response.json();
+        if (result.success) {
+            if (result.classes.length > 0) {
+                classSelect.innerHTML = '<option value="">-- Select a Class --</option>';
+                result.classes.forEach(cls => {
+                    const label = `${cls.subject} | ${cls.branch} - ${cls.year} ${cls.section} (${cls.semester})`;
+                    const value = JSON.stringify(cls);
+                    classSelect.innerHTML += `<option value='${value}'>${label}</option>`;
                 });
-                const data = await response.json();
-                if (data.success) {
-                    currentUser = data.user;
-                    currentRole = role;
-                    initWebSocket();
-                    showDashboard();
-                    updateUserInfo();
-                } else {
-                    loginError.textContent = data.message || 'Login failed.';
-                    loginError.classList.remove('hidden');
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                loginError.textContent = 'Network error. Please try again.';
-                loginError.classList.remove('hidden');
+            } else {
+                classSelect.innerHTML = '<option value="">-- No classes assigned --</option>';
             }
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        classSelect.innerHTML = '<option value="">⚠️ Error loading</option>';
+    }
+}
+
+function handleFacultyShowStudents() { /* This function can be added later */ console.log("Show Students clicked!"); }
+
+// ========================================================
+//          UTILITY FUNCTIONS
+// ========================================================
+
+function initMobileMenu() {
+    const menuBtn = document.getElementById('menuBtn');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('overlay');
+    if (menuBtn) {
+        menuBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
         });
     }
-});
+    if (overlay) {
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+        });
+    }
+}
+
+function logout() { window.location.reload(); }
+
+// ========================================================
+//          ATTENDANCE LOGIC
+// ========================================================
 
 // Initialize WebSocket connection
 function initWebSocket() {

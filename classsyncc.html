@@ -267,77 +267,7 @@
                 </div>
 
                 <!-- Other Sections (Attendance, Timetable, etc.) -->
-                <div id="attendanceSection" class="hidden">
-                    <div class="bg-white rounded-xl shadow-md p-6">
-                        <div class="gradient-bg p-4 text-white -m-6 mb-6 rounded-t-xl">
-                            <h2 class="text-xl font-bold">Daily Attendance Summary</h2>
-                        </div>
-
-                        <div class="p-4 bg-gray-50 rounded-lg border">
-                            <div class="grid grid-cols-1 md:grid-cols-5 gap-x-6 gap-y-4">
-                                <div>
-                                    <label for="admin-branch-select" class="block text-sm font-medium">Branch</label>
-                                    <select id="admin-branch-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
-                                </div>
-                                <div>
-                                    <label for="admin-year-select" class="block text-sm font-medium">Year</label>
-                                    <select id="admin-year-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
-                                </div>
-                                <div>
-                                    <label for="admin-section-select" class="block text-sm font-medium">Section</label>
-                                    <select id="admin-section-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
-                                </div>
-                                <div>
-                                    <label for="admin-semester-select" class="block text-sm font-medium">Semester</label>
-                                    <select id="admin-semester-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select>
-                                </div>
-                                <div>
-                                    <label for="admin-date-select" class="block text-sm font-medium">Date</label>
-                                    <input type="date" id="admin-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md">
-                                </div>
-                            </div>
-                            <div class="mt-4 pt-4 border-t">
-                                <div class="flex justify-between items-center">
-                                    <div class="flex items-center">
-                                         <label class="block text-sm font-medium mr-4">Periods:</label>
-                                        <div id="admin-periods-checkboxes" class="flex flex-wrap gap-x-6 gap-y-2">
-                                            </div>
-                                    </div>
-                                    <button id="admin-view-btn" class="px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">
-                                        <i class="fas fa-eye mr-2"></i>View
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="summary-output-section" class="mt-6 hidden">
-                            <hr class="my-6">
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="text-lg font-bold text-gray-800">Attendance Summary</h3>
-                                <button id="admin-download-summary-btn" class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">
-                                    <i class="fas fa-file-excel mr-2"></i>Download as Excel
-                                </button>
-                            </div>
-                            <div class="overflow-x-auto">
-                                <table class="w-full text-sm text-left">
-                                    <thead class="text-xs text-gray-700 uppercase bg-gray-100">
-                                        <tr>
-                                            <th class="px-4 py-3">S.No</th>
-                                            <th class="px-4 py-3">Class</th>
-                                            <th class="px-4 py-3">Total Strength</th>
-                                            <th class="px-4 py-3">Total Present</th>
-                                            <th class="px-4 py-3">No. of Absentees</th>
-                                            <th class="px-4 py-3">Attendance (%)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="admin-summary-tbody"></tbody>
-                                </table>
-                            </div>
-                            <div id="admin-absentees-output" class="mt-6"></div>
-                        </div>
-
-                    </div>
-                </div>
+                <div id="attendanceSection" class="hidden"></div>
                 <div id="timetableSection" class="hidden">
                     <div class="bg-white rounded-xl shadow-md overflow-hidden">
                         <div class="gradient-bg p-4 text-white flex justify-between items-center">
