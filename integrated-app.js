@@ -208,33 +208,50 @@ function loadAttendanceContent() {
         content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
         loadStudentAttendanceSummary(currentUser.roll);
     } else if (currentRole === 'faculty') {
-        // Render simplified faculty dashboard UI with a class selector
+        // Render corrected faculty dashboard UI
         content.innerHTML = `
-            <div class="p-4 bg-gray-50 rounded-lg border">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-x-6 gap-y-4 items-end">
-                    <div class="md:col-span-2">
-                        <label for="faculty-class-select" class="block text-sm font-medium">Select Your Class</label>
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h3 class="text-xl font-bold mb-4">Enhanced Attendance System</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+                    <div>
+                        <label for="faculty-class-select" class="block text-sm font-medium text-gray-700">Select Class & Periods</label>
                         <select id="faculty-class-select" class="mt-1 block w-full py-2 px-3 border rounded-md">
                             <option value="">Loading your classes...</option>
                         </select>
                     </div>
                     
                     <div>
-                        <label for="faculty-date-select" class="block text-sm font-medium">Date</label>
-                        <input type="date" id="faculty-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md">
-                    </div>
-
-                    <div>
-                        <button id="faculty-view-btn" class="w-full px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">
-                            <i class="fas fa-users mr-2"></i>Show Students
+                        <button id="faculty-show-students-btn" class="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                            <i class="fas fa-search mr-2"></i>Show Students
                         </button>
                     </div>
                 </div>
             </div>
+            
+            <div id="faculty-session-div" class="hidden">
+                <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                    <h4 class="font-semibold mb-4 text-gray-800">Attendance Session</h4>
+                    <div class="flex gap-4 mb-4">
+                        <button id="faculty-start-scan-btn" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                            <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
+                        </button>
+                        <button id="faculty-stop-scan-btn" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">
+                            <i class="fas fa-stop mr-2"></i>Stop Scanning
+                        </button>
+                    </div>
+                </div>
 
-            <div id="faculty-attendance-output" class="mt-6 hidden">
-                <hr class="my-6">
-                <div id="student-list-container"></div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
+                        <div id="faculty-student-list" class="space-y-2 max-h-96 overflow-y-auto"></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Records</h4>
+                        <div id="faculty-attendance-records" class="space-y-2 max-h-96 overflow-y-auto"></div>
+                    </div>
+                </div>
             </div>
         `;
         // Initialize the new faculty dashboard logic
@@ -250,13 +267,8 @@ function loadAttendanceContent() {
 // Faculty Dashboard (Attendance)
 // ==============================
 function initializeFacultyAttendanceDashboard() {
-    // Set default date to today
-    const dateSelect = document.getElementById('faculty-date-select');
-    if (dateSelect) {
-        dateSelect.value = new Date().toISOString().split('T')[0];
-    }
-    // Hook button
-    document.getElementById('faculty-view-btn')?.addEventListener('click', handleFacultyShowStudents);
+    // Add event listener for the new button
+    document.getElementById('faculty-show-students-btn')?.addEventListener('click', handleFacultyShowStudents);
     // Populate classes for the logged-in faculty
     populateFacultyClassDropdown();
 }
@@ -301,9 +313,9 @@ async function populateFacultyClassDropdown() {
 
 async function handleFacultyShowStudents() {
     const classSelect = document.getElementById('faculty-class-select');
-    const outputDiv = document.getElementById('faculty-attendance-output');
-    const studentListContainer = document.getElementById('student-list-container');
-    if (!classSelect || !outputDiv || !studentListContainer) return;
+    const sessionDiv = document.getElementById('faculty-session-div');
+    const studentListDiv = document.getElementById('faculty-student-list');
+    if (!classSelect || !sessionDiv || !studentListDiv) return;
 
     if (!classSelect.value) {
         alert('Please select a class first.');
@@ -311,13 +323,17 @@ async function handleFacultyShowStudents() {
     }
 
     const classData = JSON.parse(classSelect.value);
-    outputDiv.classList.remove('hidden');
-    studentListContainer.innerHTML = `<p class="text-center p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Loading students for ${classData.subject}...</p>`;
+    sessionDiv.classList.remove('hidden');
+    studentListDiv.innerHTML = `<p class="text-center p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Loading students...</p>`;
 
-    // Placeholder: integrate with detailed student fetch next
+    // Placeholder for student list - you can expand this later
     console.log('Selected class data:', classData);
     setTimeout(() => {
-        studentListContainer.innerHTML = `<p class="text-center p-4 font-semibold">Student list for ${classData.branch} ${classData.year}-${classData.section} would be displayed here.</p>`;
+        studentListDiv.innerHTML = `
+            <p class="p-4 bg-blue-50 text-blue-800 rounded-md">
+                Students for <strong>${classData.subject}</strong> would appear here.
+            </p>
+        `;
     }, 1000);
 }
 
