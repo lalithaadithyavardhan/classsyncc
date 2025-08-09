@@ -6,6 +6,7 @@
 let currentUser = null;
 let currentRole = null;
 let ws = null;
+let isBluetoothSupported = 'bluetooth' in navigator;
 
 // ========================================================
 //          INITIALIZATION & CORE APP LOGIC
@@ -569,9 +570,14 @@ function handleAttendanceMarked(data) {
 function showDashboard() {
     document.getElementById('login-container').classList.add('hidden');
     document.getElementById('dashboard-container').classList.remove('hidden');
+    // Ensure user info is rendered
+    updateUserInfo();
+    // Show the correct role view
     showRoleView(currentRole);
     initMobileMenu();
     initUserMenu();
+    // Open a WebSocket connection for attendance flows
+    try { if (!ws || ws.readyState !== WebSocket.OPEN) initWebSocket(); } catch (_) {}
 }
 
 // Show role-specific view
@@ -582,7 +588,8 @@ function showRoleView(role) {
     });
     const roleView = document.getElementById(`${role}View`);
     if (roleView) roleView.classList.remove('hidden');
-    showSection(role);
+    // Always land on dashboard content for the role
+    showSection('dashboard');
 }
 
 // Update user information display
@@ -603,7 +610,7 @@ function updateUserInfo() {
 
 // Show different sections
 function showSection(section) {
-    ['dashboardSection', 'attendanceSection', 'timetableSection', 'notificationsSection'].forEach(s => {
+    ['dashboardSection', 'attendanceSection', 'timetableSection', 'notificationsSection', 'settingsSection', 'aboutSection'].forEach(s => {
         const element = document.getElementById(s);
         if (element) element.classList.add('hidden');
     });
@@ -626,6 +633,8 @@ function loadSectionContent(section) {
         loadAttendanceContent();
     } else if (section === 'timetable') {
         loadTimetableContent();
+    } else if (section === 'settings') {
+        renderSettings();
     }
 }
 
@@ -668,18 +677,14 @@ async function loadStudentDashboardClasses() {
         if (data.success && data.timetable.length > 0) {
             const currentTime = new Date();
             const currentDay = currentTime.toLocaleDateString('en-US', { weekday: 'long' });
-            const currentTimeStr = currentTime.toLocaleTimeString('en-US', { 
-                hour: '2-digit', 
-                minute: '2-digit', 
-                hour12: false 
-            });
+            const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
             
             // Get today's classes
             const todayClasses = data.timetable.filter(entry => entry.day === currentDay);
             
             // Sort classes by time
             const timeSlots = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
-            todayClasses.sort((a, b) => timeSlots.indexOf(timeStringToMinutes(a.startTime)) - timeSlots.indexOf(timeStringToMinutes(b.startTime)));
+            todayClasses.sort((a, b) => timeStringToMinutes(a.startTime) - timeStringToMinutes(b.startTime));
             
             let currentClass = null;
             let nextClass = null;
@@ -689,11 +694,11 @@ async function loadStudentDashboardClasses() {
                 const classTime = todayClasses[i].startTime;
                 const classEndTime = getClassEndTime(classTime);
                 
-                if (timeStringToMinutes(currentTimeStr) >= timeStringToMinutes(classTime) && timeStringToMinutes(currentTimeStr) < timeStringToMinutes(classEndTime)) {
+                if (currentMinutes >= timeStringToMinutes(classTime) && currentMinutes < timeStringToMinutes(classEndTime)) {
                     currentClass = todayClasses[i];
                     nextClass = todayClasses[i + 1] || null;
                     break;
-                } else if (timeStringToMinutes(currentTimeStr) < timeStringToMinutes(classTime)) {
+                } else if (currentMinutes < timeStringToMinutes(classTime)) {
                     nextClass = todayClasses[i];
                     break;
                 }
@@ -730,6 +735,21 @@ async function loadStudentDashboardClasses() {
     }
 }
 
+// Helper: get today's subjects for current student (for attendance summary filtering)
+async function getTodaysSubjectsForStudent() {
+    try {
+        const { branch, year, section } = currentUser || {};
+        if (!branch || !year || !section) return [];
+        const resp = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}`);
+        const data = await resp.json();
+        if (!data.success) return [];
+        const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        const todays = (data.timetable || []).filter(e => e.day === currentDay);
+        const subjects = [...new Set(todays.map(e => e.subject).filter(Boolean))];
+        return subjects;
+    } catch (_) { return []; }
+}
+
 // Load faculty dashboard classes
 async function loadFacultyDashboardClasses() {
     if (!currentUser || currentRole !== 'faculty') return;
@@ -751,8 +771,7 @@ async function loadFacultyDashboardClasses() {
             const todayClasses = data.timetable.filter(entry => entry.day === currentDay);
             
             // Sort classes by time
-            const timeSlots = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
-            todayClasses.sort((a, b) => timeSlots.indexOf(timeStringToMinutes(a.startTime)) - timeSlots.indexOf(timeStringToMinutes(b.startTime)));
+            todayClasses.sort((a, b) => timeStringToMinutes(a.startTime) - timeStringToMinutes(b.startTime));
             
             let nextClass = null;
             
@@ -836,11 +855,21 @@ function updateClassDisplay(currentSubject, currentTime, currentRoom, nextSubjec
 
 // Helper: Convert 12-hour time string to minutes since midnight
 function timeStringToMinutes(timeStr) {
-    const [time, modifier] = timeStr.split(' ');
-    let [hours, minutes] = time.split(':').map(Number);
+    if (!timeStr) return 0;
+    const str = String(timeStr).trim();
+    const parts = str.split(' ');
+    let [hStr, mStr] = parts[0].split(':');
+    let hours = parseInt(hStr, 10);
+    let minutes = parseInt(mStr, 10);
+    const modifier = parts[1]; // 'AM' | 'PM' | undefined
     if (modifier === 'PM' && hours !== 12) hours += 12;
     if (modifier === 'AM' && hours === 12) hours = 0;
-    return hours * 60 + minutes;
+    if (!modifier) {
+        // No AM/PM given. Our schedule uses 9:30..12:00 then 1:50, 2:40, 3:30 (afternoon)
+        // Treat 1,2,3 as PM hours; otherwise assume morning.
+        if (hours >= 1 && hours <= 3) hours += 12;
+    }
+    return (hours * 60) + minutes;
 }
 
 // Centralized Time Slot Mapping
@@ -1053,6 +1082,12 @@ function initUserMenu() {
                 userMenu.classList.add('hidden');
             }
         });
+
+        // Hook menu items by IDs for reliability
+        const profileLink = document.getElementById('menu-profile-link');
+        const settingsLink = document.getElementById('menu-settings-link');
+        profileLink?.addEventListener('click', (e) => { e.preventDefault(); openProfileModal(); userMenu.classList.add('hidden'); });
+        settingsLink?.addEventListener('click', (e) => { e.preventDefault(); showSection('settings'); userMenu.classList.add('hidden'); });
     }
 }
 
@@ -1060,6 +1095,99 @@ function initUserMenu() {
 function logout() {
     window.location.reload();
 }
+
+// ===============================
+// Settings & Profile
+// ===============================
+
+function openProfileModal() {
+    const modal = document.getElementById('profile-modal');
+    const content = document.getElementById('profile-content');
+    if (!modal || !content || !currentUser) return;
+    const rows = [
+        { label: 'Full Name', value: currentUser.name || '-' },
+        { label: 'Role', value: currentRole },
+        { label: 'Department', value: currentUser.department || '-' },
+        { label: 'Roll / ID', value: currentUser.roll || '-' },
+        { label: 'Branch', value: currentUser.branch || '-' },
+        { label: 'Year', value: currentUser.year ?? '-' },
+        { label: 'Section', value: currentUser.section || '-' },
+        { label: 'Semester', value: currentUser.semester || '-' },
+        { label: 'Email', value: currentUser.email || '-' }
+    ];
+    content.innerHTML = rows.map(r => `<div class="flex justify-between"><span class="text-gray-500">${r.label}</span><span class="font-medium">${r.value}</span></div>`).join('');
+    modal.classList.remove('hidden');
+}
+
+function closeProfileModal() {
+    const modal = document.getElementById('profile-modal');
+    modal && modal.classList.add('hidden');
+}
+
+function renderSettings() {
+    const section = document.getElementById('settingsSection');
+    if (!section) return;
+    section.innerHTML = `
+    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+      <div class="gradient-bg p-4 text-white flex justify-between items-center">
+        <h2 class="text-xl font-bold">Settings</h2>
+        <button onclick="showSection('dashboard')" class="text-sm font-medium hover:text-indigo-200"><i class="fas fa-arrow-left mr-2"></i>Back</button>
+      </div>
+      <div class="p-6 space-y-8">
+        <div>
+          <h3 class="font-semibold mb-2">Theme</h3>
+          <div class="flex gap-3">
+            <button class="px-3 py-2 border rounded" onclick="setTheme('light')">Light</button>
+            <button class="px-3 py-2 border rounded" onclick="setTheme('dark')">Dark</button>
+            <button class="px-3 py-2 border rounded" onclick="setTheme('system')">System</button>
+          </div>
+          <p class="text-xs text-gray-500 mt-2">Current: <span id="theme-current"></span></p>
+        </div>
+        <div class="border-t pt-6">
+          <h3 class="font-semibold mb-2">Change Password</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input id="pw-old" type="password" class="px-3 py-2 border rounded" placeholder="Current password">
+            <input id="pw-new" type="password" class="px-3 py-2 border rounded" placeholder="New password">
+            <input id="pw-confirm" type="password" class="px-3 py-2 border rounded" placeholder="Confirm new password">
+          </div>
+          <div class="mt-3">
+            <button class="px-4 py-2 bg-indigo-600 text-white rounded" onclick="changePassword()">Update Password</button>
+            <span id="pw-msg" class="ml-3 text-sm"></span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+    // initialize theme label
+    document.getElementById('theme-current').textContent = (localStorage.getItem('theme') || 'system');
+}
+
+function setTheme(mode) {
+    localStorage.setItem('theme', mode);
+    document.getElementById('theme-current').textContent = mode;
+    // toggle class on html for dark mode; simple approach without changing core styles
+    const root = document.documentElement;
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const shouldDark = mode === 'dark' || (mode === 'system' && prefersDark);
+    root.classList.toggle('dark', !!shouldDark);
+}
+
+async function changePassword() {
+    const oldPw = document.getElementById('pw-old').value;
+    const newPw = document.getElementById('pw-new').value;
+    const confirmPw = document.getElementById('pw-confirm').value;
+    const msg = document.getElementById('pw-msg');
+    msg.textContent = '';
+    msg.className = 'ml-3 text-sm';
+    if (!oldPw || !newPw || !confirmPw) { msg.textContent = 'Fill all fields'; msg.classList.add('text-red-600'); return; }
+    if (newPw !== confirmPw) { msg.textContent = 'Passwords do not match'; msg.classList.add('text-red-600'); return; }
+    try {
+        const res = await fetch('/api/user/password', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roll: currentUser.roll, oldPassword: oldPw, newPassword: newPw }) });
+        const data = await res.json();
+        if (data.success) { msg.textContent = 'Password updated'; msg.classList.add('text-green-600'); document.getElementById('pw-old').value=''; document.getElementById('pw-new').value=''; document.getElementById('pw-confirm').value=''; }
+        else { msg.textContent = data.message || 'Failed'; msg.classList.add('text-red-600'); }
+    } catch (e) { msg.textContent = 'Network error'; msg.classList.add('text-red-600'); }
+}
+
 
 // Load attendance content
 function loadAttendanceContent() {
@@ -1217,15 +1345,16 @@ async function fetchUserTimetable() {
                 }
             }
             
-            // Normalize and order time slots per admin schedule
-            const order = ['9:30','10:20','11:10','12:00','1:50','2:40','3:30'];
+            // Group by normalized start time (no AM/PM)
             const groupedByTime = data.timetable.reduce((acc, entry) => {
                 const key = String(entry.startTime).split(' ')[0];
                 if (!acc[key]) acc[key] = {};
                 acc[key][entry.day] = { ...entry, startTime: key };
                 return acc;
             }, {});
-            for (const time of order.filter(t => groupedByTime[t])) {
+            // Sort keys by minutes to avoid jumbled ordering and include ALL times present
+            const timeline = Object.keys(groupedByTime).sort((a,b) => timeStringToMinutes(a) - timeStringToMinutes(b));
+            for (const time of timeline) {
                 const row = tableBody.insertRow();
                 row.innerHTML = `<td class="px-6 py-4 font-medium">${time}</td>`;
                 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1276,9 +1405,8 @@ async function renderFacultyWeeklyTimetable() {
         if (grouped[entry.day]) grouped[entry.day].push(entry);
     });
     // Sort each day's classes by start time
-    const timeOrder = TIME_SLOTS.map(slot => timeStringToMinutes(slot.start));
-    days.forEach(day => {
-        grouped[day].sort((a, b) => timeOrder.indexOf(timeStringToMinutes(a.startTime)) - timeOrder.indexOf(timeStringToMinutes(b.startTime)));
+            days.forEach(day => {
+        grouped[day].sort((a, b) => timeStringToMinutes(a.startTime) - timeStringToMinutes(b.startTime));
     });
     // Render columns
     days.forEach(day => {
@@ -1672,12 +1800,15 @@ async function loadStudentAttendanceSummary(roll) {
             document.getElementById('overall-details').textContent = `Attended ${data.overall.attended} of ${data.overall.total} classes`;
             const subjectListDiv = document.getElementById('subject-wise-list');
             subjectListDiv.innerHTML = '';
-            if (Object.keys(data.subjectWise).length === 0) {
-                subjectListDiv.innerHTML = `<p class="text-gray-500">No timetable data for percentage calculation.</p>`;
+            // Only include subjects from today's timetable for this student to ensure relevance
+            const todaysSubjects = await getTodaysSubjectsForStudent();
+            const subjectsToShow = todaysSubjects.length ? todaysSubjects : Object.keys(data.subjectWise || {});
+            if (!subjectsToShow.length) {
+                subjectListDiv.innerHTML = `<p class="text-gray-500">No subjects found for today.</p>`;
                 return;
             }
-            for (const subject in data.subjectWise) {
-                const stats = data.subjectWise[subject];
+            for (const subject of subjectsToShow) {
+                const stats = data.subjectWise[subject] || { attended: 0, total: 0, percentage: 0 };
                 const card = document.createElement('div');
                 card.className = 'bg-white rounded-lg shadow p-4';
                 card.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold">${subject}</span><span>${stats.attended}/${stats.total}</span></div><div class="w-full bg-gray-200 rounded-full h-2.5 mt-2"><div class="bg-indigo-600 h-2.5 rounded-full" style="width: ${stats.percentage}%"></div></div><p class="text-right text-lg font-semibold mt-1">${stats.percentage}%</p>`;

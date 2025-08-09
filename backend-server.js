@@ -314,6 +314,27 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Change password (current simple plaintext approach)
+app.put('/api/user/password', async (req, res) => {
+  try {
+    const { roll, oldPassword, newPassword } = req.body || {};
+    if (!roll || !oldPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: 'roll, oldPassword, newPassword are required.' });
+    }
+    const user = await User.findOne({ roll });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (String(user.password) !== String(oldPassword)) {
+      return res.status(400).json({ success: false, message: 'Current password is incorrect.' });
+    }
+    user.password = String(newPassword);
+    await user.save();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Change password error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update password.' });
+  }
+});
+
 // --- Timetable Endpoints ---
 app.get('/api/timetable/student', async (req, res) => {
     try {
@@ -847,6 +868,83 @@ app.delete('/api/admin/users/:id', async (req, res) => {
   } catch (err) {
     console.error('User delete error:', err);
     res.status(500).json({ success: false, message: 'Failed to delete user.' });
+  }
+});
+
+// --- Student Attendance Summary ---
+app.get('/api/student/attendance/summary/:roll', async (req, res) => {
+  try {
+    const { roll } = req.params;
+    const user = await User.findOne({ roll, role: 'student' });
+    if (!user) return res.status(404).json({ success: false, message: 'Student not found' });
+
+    // Find all classes for the student's cohort
+    const classes = await Class.find({ branch: user.branch, year: user.year, section: user.section });
+    if (!classes || classes.length === 0) {
+      return res.json({ success: true, overall: { attended: 0, total: 0, percentage: 0 }, subjectWise: {} });
+    }
+
+    const classIdToSubject = new Map(classes.map(c => [String(c._id), c.subject]));
+    const classIds = classes.map(c => c._id);
+
+    // Pull all sessions for these classes
+    const sessions = await AttendanceSession.find({ classId: { $in: classIds } }).lean();
+
+    // Overall totals: each period in a session counts as one class
+    let totalOverall = 0;
+    let attendedOverall = 0;
+    const subjectTotals = {}; // subject -> { total, attended }
+
+    for (const session of sessions) {
+      const periodsCount = Array.isArray(session.periods) ? session.periods.length : 0;
+      const subject = classIdToSubject.get(String(session.classId)) || 'General';
+      if (!subjectTotals[subject]) subjectTotals[subject] = { total: 0, attended: 0 };
+
+      totalOverall += periodsCount;
+      subjectTotals[subject].total += periodsCount;
+
+      // Count present records for this student in this session
+      const records = Array.isArray(session.attendanceRecords) ? session.attendanceRecords : [];
+      const presentForStudent = records.filter(r => r.studentRoll === roll).length;
+      attendedOverall += presentForStudent;
+      subjectTotals[subject].attended += presentForStudent;
+    }
+
+    const overall = {
+      attended: attendedOverall,
+      total: totalOverall,
+      percentage: totalOverall > 0 ? Math.round((attendedOverall / totalOverall) * 100) : 0
+    };
+
+    const subjectWise = {};
+    for (const [subject, stats] of Object.entries(subjectTotals)) {
+      subjectWise[subject] = {
+        attended: stats.attended,
+        total: stats.total,
+        percentage: stats.total > 0 ? Math.round((stats.attended / stats.total) * 100) : 0
+      };
+    }
+
+    res.json({ success: true, overall, subjectWise });
+  } catch (err) {
+    console.error('Student summary error:', err);
+    res.status(500).json({ success: false, message: 'Failed to compute student summary' });
+  }
+});
+
+// --- List attendance sessions for a faculty (used by student auto-detect) ---
+app.get('/api/faculty/attendance/sessions/:facultyId', async (req, res) => {
+  try {
+    const { facultyId } = req.params;
+    const { date } = req.query;
+    const filter = { };
+    if (facultyId) filter.facultyId = facultyId;
+    if (date) filter.date = date;
+    const sessions = await AttendanceSession.find(filter).lean();
+    res.json({ success: true, sessions });
+  } catch (err) {
+    console.error('List sessions error:', err);
+    res.status(500).json({ success: false, message: 'Failed to list sessions' });
   }
 });
 
