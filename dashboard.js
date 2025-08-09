@@ -17,32 +17,32 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function handleLogin(e) {
-    e.preventDefault();
-    const role = document.getElementById('role').value;
-    const roll = document.getElementById('roll').value.trim();
-    const password = document.getElementById('password').value;
-    const loginError = document.getElementById('login-error');
-    loginError.classList.add('hidden');
-
-    try {
-        const response = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ role, roll, password })
-        });
-        const data = await response.json();
-        if (data.success) {
-            currentUser = data.user;
-            currentRole = role;
-            showDashboard();
-        } else {
-            loginError.textContent = data.message || 'Login failed.';
-            loginError.classList.remove('hidden');
-        }
-    } catch (error) {
-        loginError.textContent = 'Network error. Please try again.';
-        loginError.classList.remove('hidden');
-    }
+            e.preventDefault();
+            const role = document.getElementById('role').value;
+            const roll = document.getElementById('roll').value.trim();
+            const password = document.getElementById('password').value;
+            const loginError = document.getElementById('login-error');
+            loginError.classList.add('hidden');
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role, roll, password })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    currentUser = data.user;
+                    currentRole = role;
+                    showDashboard();
+                } else {
+                    loginError.textContent = data.message || 'Login failed.';
+                    loginError.classList.remove('hidden');
+                }
+            } catch (error) {
+                loginError.textContent = 'Network error. Please try again.';
+                loginError.classList.remove('hidden');
+            }
 }
 
 function showDashboard() {
@@ -86,47 +86,97 @@ function showSection(section) {
 // ========================================================
 
 function loadAttendanceContent() {
-    const attendanceContainer = document.getElementById('attendanceSection');
-    attendanceContainer.innerHTML = ''; // Clear any old content
-
-    if (currentRole === 'admin') {
-        // Inject the Admin UI HTML into the container
-        attendanceContainer.innerHTML = `
+    // Support both containers: legacy #attendanceContent and new #attendanceSection
+    const content = document.getElementById('attendanceContent') || document.getElementById('attendanceSection');
+    if (!content) return;
+    
+    // Clear before rendering
+    content.innerHTML = '';
+    
+    if (currentRole === 'student') {
+        content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
+        loadStudentAttendanceSummary(currentUser.roll);
+    } else if (currentRole === 'faculty') {
+        content.innerHTML = `
+            <div>
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold mb-4">Enhanced Attendance System</h3>
+                    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                        <h4 class="font-semibold mb-4 text-gray-800">Select Class & Periods</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Date:</label>
+                                <input type="date" id="attendance-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Subject:</label>
+                                <select id="class-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                    <option value="">Select Subject</option>
+                                </select>
+                                <p id="class-select-helper" class="text-xs text-gray-500 mt-1">Filtered by faculty mapping (branch/year/section/semester)</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Periods:</label>
+                                <div class="flex flex-wrap gap-2">
+                                    ${[1,2,3,4,5,6,7].map(p => `
+                                        <label class="flex items-center">
+                                            <input type="checkbox" value="${p}" class="mr-1">
+                                            <span class="text-sm">Period ${p}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="loadClassStudents()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
+                            <i class="fas fa-search mr-2"></i>Show Students
+                        </button>
+                    </div>
+                    <div id="session-controls" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
+                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Session</h4>
+                        <div class="flex gap-4 mb-4">
+                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"><i class="fas fa-play mr-2"></i>Start Bluetooth Scanning</button>
+                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"><i class="fas fa-stop mr-2"></i>Stop Scanning</button>
+                        </div>
+                        <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg"></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
+                        <div id="students-list" class="space-y-2 max-h-96 overflow-y-auto">
+                            <p class="text-gray-500 text-center py-8">Select a class to view students</p>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Records</h4>
+                        <div id="attendance-records" class="space-y-2 max-h-96 overflow-y-auto">
+                            <p class="text-gray-500 text-center py-8">No attendance records yet</p>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        loadFacultyClasses();
+    } else if (currentRole === 'admin') {
+        // Inject the final admin UI with multi-selects and date range
+        content.innerHTML = `
             <div class="bg-white rounded-xl shadow-md p-6">
                 <div class="gradient-bg p-4 text-white -m-6 mb-6 rounded-t-xl"><h2 class="text-xl font-bold">Daily Attendance Summary</h2></div>
                 <div class="p-4 bg-gray-50 rounded-lg border">
-                    <div class="grid grid-cols-1 md:grid-cols-5 gap-x-6 gap-y-4">
-                        <div><label for="admin-branch-select" class="block text-sm font-medium">Branch</label><select id="admin-branch-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
-                        <div><label for="admin-year-select" class="block text-sm font-medium">Year</label><select id="admin-year-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
-                        <div><label for="admin-section-select" class="block text-sm font-medium">Section</label><select id="admin-section-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
-                        <div><label for="admin-semester-select" class="block text-sm font-medium">Semester</label><select id="admin-semester-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
-                        <div><label for="admin-date-select" class="block text-sm font-medium">Date</label><input type="date" id="admin-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
+                    <div class="grid grid-cols-1 md:grid-cols-6 gap-x-6 gap-y-4">
+                        <div><label class="block text-sm font-medium">Branch</label><select id="admin-branch-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label class="block text-sm font-medium">Year</label><select id="admin-year-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label class="block text-sm font-medium">Section</label><select id="admin-section-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label class="block text-sm font-medium">Semester</label><select id="admin-semester-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label class="block text-sm font-medium">Date</label><input type="date" id="admin-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
+                        <div class="hidden md:block"></div>
+                        <div><label class="block text-sm font-medium">From</label><input type="date" id="admin-from-date" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
+                        <div><label class="block text-sm font-medium">To</label><input type="date" id="admin-to-date" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
                     </div>
                     <div class="mt-4 pt-4 border-t"><div class="flex justify-between items-center"><div class="flex items-center"><label class="block text-sm font-medium mr-4">Periods:</label><div id="admin-periods-checkboxes" class="flex flex-wrap gap-x-6 gap-y-2"></div></div><button id="admin-view-btn" class="px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700"><i class="fas fa-eye mr-2"></i>View</button></div></div>
                 </div>
+                <div id="summary-output-section" class="mt-6 hidden"></div>
             </div>`;
-        // Now that the HTML exists, run the JavaScript for it
         initializeAdminAttendanceDashboard();
-
-    } else if (currentRole === 'faculty') {
-        // Inject the Faculty UI HTML into the container
-        attendanceContainer.innerHTML = `
-            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-                <h3 class="text-xl font-bold mb-4">Take Attendance</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
-                    <div>
-                        <label for="faculty-class-select" class="block text-sm font-medium text-gray-700">Select Your Class</label>
-                        <select id="faculty-class-select" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">Loading...</option></select>
-                    </div>
-                    <div>
-                        <button id="faculty-show-students-btn" class="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"><i class="fas fa-search mr-2"></i>Show Students</button>
-                    </div>
-                </div>
-            </div>
-            <div id="faculty-session-div" class="hidden">
-                </div>`;
-        // Now that the HTML exists, run the JavaScript for it
-        initializeFacultyAttendanceDashboard();
     }
 }
 
@@ -134,48 +184,111 @@ function loadAttendanceContent() {
 //          ADMIN ATTENDANCE LOGIC
 // ========================================================
 
+// Upgrade admin filters: support multi-select and date range
 function initializeAdminAttendanceDashboard() {
     document.getElementById('admin-date-select').value = new Date().toISOString().split('T')[0];
     const periodsContainer = document.getElementById('admin-periods-checkboxes');
     periodsContainer.innerHTML = '';
     for (let i = 1; i <= 7; i++) {
-        periodsContainer.innerHTML += `<label class="flex items-center gap-2"><input type="checkbox" value="${i}" class="admin-period-cb h-4 w-4"><span>P${i}</span></label>`;
+        periodsContainer.innerHTML += `<label class="flex items-center gap-2"><input type="checkbox" value="${i}" class="admin-period-cb h-4 w-4" checked><span>P${i}</span></label>`;
     }
 
+    // Restore cascading dropdown loading via /api/filter-options
     const branchSelect = document.getElementById('admin-branch-select');
     const yearSelect = document.getElementById('admin-year-select');
     const sectionSelect = document.getElementById('admin-section-select');
-    
-    branchSelect.addEventListener('change', () => populateFilterDropdown('admin-year-select', { branch: branchSelect.value }));
-    yearSelect.addEventListener('change', () => populateFilterDropdown('admin-section-select', { branch: branchSelect.value, year: yearSelect.value }));
-    sectionSelect.addEventListener('change', () => populateFilterDropdown('admin-semester-select', { branch: branchSelect.value, year: yearSelect.value, section: sectionSelect.value }));
+
+    branchSelect?.addEventListener('change', () => {
+        populateFilterDropdown('admin-year-select', { branch: branchSelect.value });
+    });
+    yearSelect?.addEventListener('change', () => {
+        populateFilterDropdown('admin-section-select', { branch: branchSelect.value, year: yearSelect.value });
+    });
+    sectionSelect?.addEventListener('change', () => {
+        populateFilterDropdown('admin-semester-select', { branch: branchSelect.value, year: yearSelect.value, section: sectionSelect.value });
+    });
 
     document.getElementById('admin-view-btn')?.addEventListener('click', handleAdminViewClick);
+
+    // Kick off chain by loading branches first
     populateFilterDropdown('admin-branch-select', {});
+}
+
+function getValues(id) {
+    const el = document.getElementById(id);
+    if (!el) return [];
+    // If element is <select multiple>
+    if (el.tagName === 'SELECT' && el.multiple) {
+        return Array.from(el.selectedOptions).map(o => o.value).filter(Boolean);
+    }
+    // Support a comma-separated input (optional)
+    if (el.tagName === 'INPUT' && el.dataset.multiple === 'true') {
+        return el.value.split(',').map(v => v.trim()).filter(Boolean);
+    }
+    // Fallback single value
+    return el.value ? [el.value] : [];
+}
+
+function getAdminFilters() {
+    const periods = Array.from(document.querySelectorAll('.admin-period-cb:checked')).map(cb => Number(cb.value));
+    const date = document.getElementById('admin-date-select')?.value || '';
+    const fromDate = document.getElementById('admin-from-date')?.value || '';
+    const toDate = document.getElementById('admin-to-date')?.value || '';
+
+    const branches = getValues('admin-branch-select');
+    const years = getValues('admin-year-select');
+    const sections = getValues('admin-section-select');
+    const semesters = getValues('admin-semester-select');
+
+    if (!date && !fromDate && !toDate) {
+        alert('Select a Date or From/To range.');
+        return null;
+    }
+    if (periods.length === 0) {
+        alert('Select at least one period.');
+        return null;
+    }
+
+    // Include single-value fallbacks for backwards compatibility
+    return {
+        date,
+        fromDate,
+        toDate,
+        periods,
+        branch: branches[0] || '',
+        year: years[0] || '',
+        section: sections[0] || '',
+        semester: semesters[0] || '',
+        branches,
+        years,
+        sections,
+        semesters
+    };
 }
 
 async function populateFilterDropdown(elementId, filters) {
     const selectElement = document.getElementById(elementId);
-    const field = elementId.replace('admin-', '').replace('-select', ''); 
+    if (!selectElement) return;
+    const field = elementId.replace('admin-', '').replace('-select', '');
     resetSubsequentFilters(field);
     selectElement.innerHTML = '<option value="">Loading...</option>';
     selectElement.disabled = true;
-
     try {
         const query = new URLSearchParams({ field, ...filters }).toString();
         const response = await fetch(`/api/filter-options?${query}`);
-        if (!response.ok) throw new Error(`Server error! Status: ${response.status}`);
+        if (!response.ok) throw new Error(`Server error ${response.status}`);
         const result = await response.json();
         if (result.success) {
             selectElement.innerHTML = '<option value="">All</option>';
-            result.options.forEach(option => {
+            (result.options || []).forEach(option => {
                 selectElement.innerHTML += `<option value="${option}">${option}</option>`;
             });
         } else {
-             throw new Error(result.message);
+            selectElement.innerHTML = '<option value="">-- No options --</option>';
         }
-    } catch (error) {
-        selectElement.innerHTML = `<option value="">⚠️ Error</option>`;
+    } catch (e) {
+        console.error(`[FRONTEND] Failed to populate ${field}:`, e);
+        selectElement.innerHTML = '<option value="">⚠️ Error</option>';
     } finally {
         selectElement.disabled = false;
     }
@@ -183,17 +296,99 @@ async function populateFilterDropdown(elementId, filters) {
 
 function resetSubsequentFilters(changedField) {
     const filterChain = ['branch', 'year', 'section', 'semester'];
-    const startIndex = filterChain.indexOf(changedField) + 1;
-    for (let i = startIndex; i < filterChain.length; i++) {
-        const selectElement = document.getElementById(`admin-${filterChain[i]}-select`);
-        if (selectElement) {
-            selectElement.innerHTML = `<option value="">-- Select ${filterChain[i-1]} --</option>`;
-            selectElement.disabled = true;
+    const start = filterChain.indexOf(changedField) + 1;
+    for (let i = start; i < filterChain.length; i++) {
+        const el = document.getElementById(`admin-${filterChain[i]}-select`);
+        if (el) {
+            el.innerHTML = `<option value="">-- Select ${filterChain[i-1]} --</option>`;
+            el.disabled = true;
         }
     }
 }
 
-function handleAdminViewClick() { /* This function can be added later */ console.log("View clicked!"); }
+// Render admin summary UI and actions
+function handleAdminViewClick() {
+    const filters = getAdminFilters();
+    if (!filters) return;
+    const output = document.getElementById('summary-output-section');
+    if (!output) return;
+    output.classList.remove('hidden');
+    output.innerHTML = `<div class="bg-white rounded-xl shadow p-4">Loading summary...</div>`;
+    fetch('/api/admin/attendance/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filters)
+    }).then(r => r.json()).then(result => {
+        if (!result.success) throw new Error(result.message || 'Failed to load summary');
+        renderAdminSummary(result.summary, result.absentees);
+    }).catch(err => {
+        output.innerHTML = `<div class='bg-white rounded-xl shadow p-4 text-red-600'>${err.message}</div>`;
+    });
+}
+
+function renderAdminSummary(summaryData, absenteesData) {
+    const output = document.getElementById('summary-output-section');
+    if (!output) return;
+    const rows = (summaryData || []).map(r => `<tr>
+        <td class='px-3 py-2'>${r.sno}</td>
+        <td class='px-3 py-2 font-medium'>${r.className}</td>
+        <td class='px-3 py-2'>${r.totalStrength}</td>
+        <td class='px-3 py-2 text-green-700'>${r.totalPresent}</td>
+        <td class='px-3 py-2 text-red-700'>${r.totalAbsentees}</td>
+        <td class='px-3 py-2'>${r.attendancePercent}%</td>
+    </tr>`).join('');
+
+    output.innerHTML = `
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-lg font-semibold">Summary</h3>
+          <button id="admin-download-excel" class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">
+            <i class="fas fa-file-excel mr-2"></i>Download Excel
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full border"> 
+            <thead class="bg-gray-50">
+              <tr>
+                <th class='px-3 py-2 text-left'>S.No</th>
+                <th class='px-3 py-2 text-left'>Class</th>
+                <th class='px-3 py-2 text-left'>Strength</th>
+                <th class='px-3 py-2 text-left'>Present</th>
+                <th class='px-3 py-2 text-left'>Absentees</th>
+                <th class='px-3 py-2 text-left'>%</th>
+              </tr>
+            </thead>
+            <tbody>${rows || ''}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    document.getElementById('admin-download-excel')?.addEventListener('click', downloadAdminSummaryExcel);
+}
+
+async function downloadAdminSummaryExcel() {
+    const filters = getAdminFilters();
+    if (!filters) return;
+    try {
+        const response = await fetch('/api/admin/attendance/summary/excel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(filters)
+        });
+        if (!response.ok) throw new Error(`Server error ${response.status}`);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `attendance_summary_${filters.date}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (e) {
+        alert(`Failed to download: ${e.message}`);
+    }
+}
 
 // ========================================================
 //          FACULTY ATTENDANCE LOGIC
@@ -868,8 +1063,12 @@ function logout() {
 
 // Load attendance content
 function loadAttendanceContent() {
-    const content = document.getElementById('attendanceContent');
+    // Support both containers: legacy #attendanceContent and new #attendanceSection
+    const content = document.getElementById('attendanceContent') || document.getElementById('attendanceSection');
     if (!content) return;
+    
+    // Clear before rendering
+    content.innerHTML = '';
     
     if (currentRole === 'student') {
         content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
@@ -879,11 +1078,8 @@ function loadAttendanceContent() {
             <div>
                 <div class="mb-6">
                     <h3 class="text-xl font-bold mb-4">Enhanced Attendance System</h3>
-                    
-                    <!-- Class Selection Form -->
                     <div class="bg-white p-6 rounded-lg shadow-md mb-6">
                         <h4 class="font-semibold mb-4 text-gray-800">Select Class & Periods</h4>
-                        
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Date:</label>
@@ -908,37 +1104,26 @@ function loadAttendanceContent() {
                                 </div>
                             </div>
                         </div>
-                        
                         <button onclick="loadClassStudents()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
                             <i class="fas fa-search mr-2"></i>Show Students
                         </button>
                     </div>
-                    
-                    <!-- Attendance Session Controls -->
                     <div id="session-controls" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
                         <h4 class="font-semibold mb-4 text-gray-800">Attendance Session</h4>
                         <div class="flex gap-4 mb-4">
-                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
-                                <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
-                            </button>
-                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">
-                                <i class="fas fa-stop mr-2"></i>Stop Scanning
-                            </button>
+                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"><i class="fas fa-play mr-2"></i>Start Bluetooth Scanning</button>
+                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"><i class="fas fa-stop mr-2"></i>Stop Scanning</button>
                         </div>
                         <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg"></div>
                     </div>
                 </div>
-                
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <!-- Students List -->
                     <div class="bg-white p-6 rounded-lg shadow-md">
                         <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
                         <div id="students-list" class="space-y-2 max-h-96 overflow-y-auto">
                             <p class="text-gray-500 text-center py-8">Select a class to view students</p>
                         </div>
                     </div>
-                    
-                    <!-- Attendance Records -->
                     <div class="bg-white p-6 rounded-lg shadow-md">
                         <h4 class="font-semibold mb-4 text-gray-800">Attendance Records</h4>
                         <div id="attendance-records" class="space-y-2 max-h-96 overflow-y-auto">
@@ -946,43 +1131,29 @@ function loadAttendanceContent() {
                         </div>
                     </div>
                 </div>
-                
-                <!-- Legacy Interface (Hidden by default) -->
-                <div id="legacy-faculty-interface" class="hidden">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                            <h3 class="text-xl font-bold mb-4">Legacy Attendance Session</h3>
-                        <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium mb-4">
-                            <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
-                        </button>
-                            <div id="bluetooth-status-legacy" class="p-3 bg-gray-100 rounded-lg mb-4"></div>
-                        <div>
-                            <h4 class="font-semibold mb-2">Manual Attendance</h4>
-                            <div class="flex gap-2">
-                                <input type="text" id="manual-roll" placeholder="Enter Roll Number" class="flex-1 px-3 py-2 border rounded-lg">
-                                <button onclick="addManualAttendance()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                    Add
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <h4 class="font-semibold mb-2">Discovered Devices</h4>
-                        <ul id="discovered-devices-list" class="space-y-2"></ul>
-                        <h4 class="font-semibold mb-2 mt-6">Today's Attendance</h4>
-                        <div id="faculty-attendance-list" class="space-y-2"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Load faculty classes
+            </div>`;
         loadFacultyClasses();
     } else if (currentRole === 'admin') {
-        content.innerHTML = `<h3 class="text-xl font-bold mb-4">View Attendance Records</h3><div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg"><div><label for="branchFilter">Branch:</label><select id="branchFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="CSE">CSE</option><option value="IT">IT</option></select></div><div><label for="yearFilter">Year:</label><select id="yearFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div><div><label for="sectionFilter">Section:</label><select id="sectionFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"><option value="">All</option><option value="A">A</option><option value="B">B</option></select></div><div><label for="dateFilter">Date:</label><input type="date" id="dateFilter" class="mt-1 block w-full py-2 px-3 border rounded-md"></div></div><div class="flex justify-between items-center mb-4"><button id="applyFilterBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">View Attendance</button><button id="downloadBtn" class="px-4 py-2 bg-green-600 text-white rounded-lg">Download as Excel</button></div><div class="overflow-x-auto"><table class="min-w-full"><thead class="bg-gray-50"><tr><th>Roll Number</th><th>Status</th><th>Date</th><th>Timestamp</th></tr></thead><tbody id="admin-attendance-table"></tbody></table></div>`;
-        document.getElementById('applyFilterBtn').addEventListener('click', fetchAdminAttendance);
-        document.getElementById('downloadBtn').addEventListener('click', downloadAttendance);
+        // Inject the final admin UI with multi-selects and date range
+        content.innerHTML = `
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <div class="gradient-bg p-4 text-white -m-6 mb-6 rounded-t-xl"><h2 class="text-xl font-bold">Daily Attendance Summary</h2></div>
+                <div class="p-4 bg-gray-50 rounded-lg border">
+                    <div class="grid grid-cols-1 md:grid-cols-6 gap-x-6 gap-y-4">
+                        <div><label class="block text-sm font-medium">Branch</label><select id="admin-branch-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label class="block text-sm font-medium">Year</label><select id="admin-year-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label class="block text-sm font-medium">Section</label><select id="admin-section-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label class="block text-sm font-medium">Semester</label><select id="admin-semester-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
+                        <div><label class="block text-sm font-medium">Date</label><input type="date" id="admin-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
+                        <div class="hidden md:block"></div>
+                        <div><label class="block text-sm font-medium">From</label><input type="date" id="admin-from-date" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
+                        <div><label class="block text-sm font-medium">To</label><input type="date" id="admin-to-date" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
+                    </div>
+                    <div class="mt-4 pt-4 border-t"><div class="flex justify-between items-center"><div class="flex items-center"><label class="block text-sm font-medium mr-4">Periods:</label><div id="admin-periods-checkboxes" class="flex flex-wrap gap-x-6 gap-y-2"></div></div><button id="admin-view-btn" class="px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700"><i class="fas fa-eye mr-2"></i>View</button></div></div>
+                </div>
+                <div id="summary-output-section" class="mt-6 hidden"></div>
+            </div>`;
+        initializeAdminAttendanceDashboard();
     }
 }
 
@@ -1155,24 +1326,27 @@ async function handleAdminViewTimetable() {
     const branch = document.getElementById('admin-branch-select').value;
     const year = document.getElementById('admin-year-select').value;
     const section = document.getElementById('admin-section-select').value;
+    const semester = document.getElementById('admin-semester-select')?.value || '';
     document.querySelectorAll('.interactive-timetable-input').forEach(input => input.value = '');
     try {
-        const response = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}`);
+        const query = new URLSearchParams({ branch, year, section, ...(semester ? { semester } : {}) }).toString();
+        const response = await fetch(`/api/admin/timetable?${query}`);
         const data = await response.json();
         if (data.success && data.timetable) {
-            const periodMap = { '9:30': 1, '10:20': 2, '11:10': 3, '12:00': 4, '12:30': 5, '1:20': 6, '2:10': 7 };
+            const periodMap = { '9:30': 1, '10:20': 2, '11:10': 3, '12:00': 4, '1:50': 5, '2:40': 6, '3:30': 7 };
             data.timetable.forEach(slot => {
-                const period = periodMap[slot.startTime];
+                const start = String(slot.startTime).split(' ')[0];
+                const period = periodMap[start];
                 if (period) {
                     const sel = (p, placeholder) => `input[data-day="${slot.day.toUpperCase()}"][data-period="${p}"][placeholder="${placeholder}"]`;
-                    document.querySelector(sel(period, "Subject")).value = slot.subject;
-                    document.querySelector(sel(period, "Faculty ID")).value = slot.facultyId;
-                    document.querySelector(sel(period, "Room")).value = slot.room;
+                    document.querySelector(sel(period, "Subject")).value = slot.subject || '';
+                    document.querySelector(sel(period, "Faculty ID")).value = slot.facultyId || '';
+                    document.querySelector(sel(period, "Room")).value = slot.room || '';
                 }
             });
             alert('Timetable loaded!');
-        } else { 
-            alert('No timetable found.'); 
+        } else {
+            alert('No timetable found.');
         }
     } catch (error) {
         console.error('Failed to fetch timetable:', error);
@@ -1185,8 +1359,9 @@ async function handleAdminSaveTimetable() {
     const branch = document.getElementById('admin-branch-select').value;
     const year = document.getElementById('admin-year-select').value;
     const section = document.getElementById('admin-section-select').value;
+    const semester = document.getElementById('admin-semester-select')?.value || '';
     const timetableData = [];
-    const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '12:30', 6: '1:20', 7: '2:10' };
+    const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '1:50', 6: '2:40', 7: '3:30' };
     document.querySelectorAll('#admin-timetable-grid-body tr').forEach(row => {
         const day = row.querySelector('th').textContent;
         for (let period = 1; period <= 7; period++) {
@@ -1207,13 +1382,13 @@ async function handleAdminSaveTimetable() {
         const response = await fetch('/api/admin/timetable/bulk-update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ branch, year, section, timetableEntries: timetableData })
+            body: JSON.stringify({ branch, year, section, semester, timetableEntries: timetableData })
         });
         const result = await response.json();
         if (result.success) {
             alert('Timetable saved successfully!');
-        } else { 
-            throw new Error(result.message || 'Failed to save.'); 
+        } else {
+            throw new Error(result.message || 'Failed to save.');
         }
     } catch (error) {
         console.error('Failed to save timetable:', error);
@@ -1815,7 +1990,7 @@ async function startEnhancedAttendanceSession() {
                 </div>
                     <div class="text-sm text-blue-600 mt-2">
                         Session ID: ${currentSessionId}
-                    </div>
+                </div>
             `;
             }
             
@@ -1854,7 +2029,7 @@ function stopEnhancedAttendanceSession() {
         </div>
             <div class="text-sm text-gray-600 mt-2">
                 Bluetooth scanning has been stopped
-            </div>
+        </div>
     `;
     }
     

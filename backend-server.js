@@ -580,67 +580,274 @@ app.get('/api/subjects', async (req, res) => {
     }
 });
 
-/**
- * REFINED SUMMARY ENDPOINT
- * This replaces the previous summary endpoint. It now accepts more filters
- * and returns JSON data to be displayed on the page.
- */
+// Helper: normalize input to array
+function toNonEmptyArray(value, mapFn) {
+  if (value === undefined || value === null || value === '') return [];
+  const arr = Array.isArray(value) ? value : [value];
+  return arr.map(v => (mapFn ? mapFn(v) : v)).filter(v => v !== undefined && v !== null && v !== '');
+}
+
+// Helper: compute admin attendance summary (supports multi-select and date range)
+async function computeAdminSummary({ date, fromDate, toDate, periods, branch, year, section, semester, branches, years, sections, semesters }) {
+  const periodNums = (periods || []).map(p => Number(p)).filter(n => !Number.isNaN(n));
+  if ((!date && !fromDate && !toDate) || periodNums.length === 0) {
+    throw new Error('Select a date or range and at least one period.');
+  }
+
+  // Build class filter for Users collection
+  const branchArr = toNonEmptyArray(branches?.length ? branches : branch);
+  const yearArr = toNonEmptyArray(years?.length ? years : year, v => Number(v));
+  const sectionArr = toNonEmptyArray(sections?.length ? sections : section);
+  const semesterArr = toNonEmptyArray(semesters?.length ? semesters : semester);
+
+  const classFilter = { role: 'student' };
+  if (branchArr.length) classFilter.branch = { $in: branchArr };
+  if (yearArr.length) classFilter.year = { $in: yearArr };
+  if (sectionArr.length) classFilter.section = { $in: sectionArr };
+  if (semesterArr.length) classFilter.semester = { $in: semesterArr };
+
+  const classes = await User.aggregate([
+    { $match: classFilter },
+    { $group: { _id: { branch: '$branch', year: '$year', section: '$section', semester: '$semester' } } },
+    { $sort: { '_id.year': 1, '_id.branch': 1, '_id.section': 1 } }
+  ]);
+
+  const summaryData = [];
+  const absenteesByClass = {};
+
+  // Build common attendance date filter
+  const attendanceDateFilter = {};
+  if (date) attendanceDateFilter.date = date;
+  if (fromDate || toDate) {
+    attendanceDateFilter.date = Object.assign(attendanceDateFilter.date || {}, {
+      ...(fromDate ? { $gte: fromDate } : {}),
+      ...(toDate ? { $lte: toDate } : {})
+    });
+  }
+
+  for (const [index, klass] of classes.entries()) {
+    const { branch, year, section, semester } = klass._id;
+    if (!branch || !year || !section) continue;
+
+    const studentQuery = { role: 'student', branch, year, section, semester };
+    const allStudents = await User.find(studentQuery).select('roll');
+    const totalStrength = allStudents.length;
+    if (totalStrength === 0) continue;
+
+    const attendanceFilter = {
+      branch, year, section,
+      ...attendanceDateFilter,
+      period: { $in: periodNums },
+      status: { $regex: /present/i }
+    };
+
+    // Count unique students present across selected dates/periods
+    const presentRolls = await Attendance.distinct('roll', attendanceFilter);
+    const totalPresent = presentRolls.length;
+
+    const allRolls = allStudents.map(s => s.roll);
+    const absenteeRolls = allRolls.filter(roll => !presentRolls.includes(roll));
+
+    const className = `${year} ${branch}-${section}`;
+    summaryData.push({
+      sno: index + 1,
+      className,
+      totalStrength,
+      totalPresent,
+      totalAbsentees: Math.max(totalStrength - totalPresent, 0),
+      attendancePercent: totalStrength > 0 ? Math.round((totalPresent / totalStrength) * 100) : 0
+    });
+    absenteesByClass[className] = absenteeRolls;
+  }
+
+  // Totals row
+  const totals = summaryData.reduce((acc, r) => {
+    acc.totalStrength += r.totalStrength;
+    acc.totalPresent += r.totalPresent;
+    acc.totalAbsentees += r.totalAbsentees;
+    return acc;
+  }, { totalStrength: 0, totalPresent: 0, totalAbsentees: 0 });
+  const totalPercent = totals.totalStrength > 0 ? Math.round((totals.totalPresent / totals.totalStrength) * 100) : 0;
+
+  return { summaryData, absenteesByClass, totals: { ...totals, attendancePercent: totalPercent } };
+}
+
+// Summary JSON endpoint (multi-select + date range supported)
 app.post('/api/admin/attendance/summary', async (req, res) => {
-    try {
-        // The 'subject' filter is no longer needed here
-        const { date, periods, branch, year, section, semester } = req.body;
-        if (!date || !periods || !Array.isArray(periods) || periods.length === 0) {
-            return res.status(400).json({ success: false, message: 'Date and at least one period are required.' });
-        }
+  try {
+    const params = req.body || {};
+    const result = await computeAdminSummary(params);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Attendance Summary Error:', err);
+    res.status(400).json({ success: false, message: err.message || 'Server error while creating summary.' });
+  }
+});
 
-        const classFilter = { role: 'student' };
-        if (branch) classFilter.branch = branch;
-        if (year) classFilter.year = Number(year);
-        if (section) classFilter.section = section;
-        if (semester) classFilter.semester = semester;
+// Excel export for admin summary – formatted report
+app.post('/api/admin/attendance/summary/excel', async (req, res) => {
+  try {
+    const params = req.body || {};
+    const { summaryData, absenteesByClass, totals } = await computeAdminSummary(params);
 
-        const classes = await User.aggregate([
-            { $match: classFilter },
-            { $group: { _id: { branch: '$branch', year: '$year', section: '$section', semester: '$semester' } } },
-            { $sort: { '_id.year': 1, '_id.branch': 1, '_id.section': 1 } }
-        ]);
+    const wb = XLSX.utils.book_new();
 
-        const summaryData = [];
-        const absenteesByClass = {};
+    // Build single Report sheet with header + table + totals + absentee sections
+    const report = [];
+    const rangeLabel = params.date ? params.date : `${params.fromDate || ''}${params.fromDate && params.toDate ? ' to ' : ''}${params.toDate || ''}`;
+    report.push(['ADITYA COLLEGE OF ENGINEERING & TECHNOLOGY (A)']);
+    report.push(['Aditya Nagar, ADB Road, Surampalem']);
+    report.push([`Attendance Report - ${rangeLabel || 'Date Range'}`]);
+    report.push([]);
 
-        for (const [index, klass] of classes.entries()) {
-            const { branch, year, section, semester } = klass._id;
-            if (!branch || !year || !section) continue;
+    report.push(['S.No', 'Class', 'Total Strength', 'Total Present', 'No.of Absentees', 'Attendance (%)']);
+    summaryData.forEach(r => report.push([r.sno, r.className, r.totalStrength, r.totalPresent, r.totalAbsentees, r.attendancePercent]));
+    report.push(['Total', '', totals.totalStrength, totals.totalPresent, totals.totalAbsentees, totals.attendancePercent]);
+    report.push([]);
 
-            const studentQuery = { role: 'student', branch, year, section, semester };
-            const allStudents = await User.find(studentQuery).select('roll');
-            const totalStrength = allStudents.length;
-            if (totalStrength === 0) continue;
+    // Absentees sections
+    report.push(['ABSENTEES ROLL NO :']);
+    Object.entries(absenteesByClass).forEach(([className, rolls], idx) => {
+      report.push([String(idx + 1), className, (rolls || []).join(',')]);
+      report.push([]);
+    });
 
-            // The attendance filter is now simpler, without 'subject'
-            const attendanceFilter = {
-                branch, year, section, date,
-                period: { $in: periods },
-                status: { $regex: /present/i }
-            };
+    const ws = XLSX.utils.aoa_to_sheet(report);
+    // Simple merges for title lines
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Report');
 
-            const presentRolls = await Attendance.distinct('roll', attendanceFilter);
-            const totalPresent = presentRolls.length;
-            
-            const allRolls = allStudents.map(s => s.roll);
-            const absenteeRolls = allRolls.filter(roll => !presentRolls.includes(roll));
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `attendance_report_${(params.date || params.fromDate || 'today')}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.error('Summary Excel Error:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to generate Excel.' });
+  }
+});
 
-            const className = `${year} ${branch}-${section}`;
-            summaryData.push({ sno: index + 1, className, totalStrength, totalPresent, totalAbsentees: totalStrength - totalPresent, attendancePercent: totalStrength > 0 ? Math.round((totalPresent / totalStrength) * 100) : 0 });
-            absenteesByClass[className] = absenteeRolls;
-        }
-
-        res.json({ success: true, summary: summaryData, absentees: absenteesByClass });
-
-    } catch (err) {
-        console.error("Attendance Summary Error:", err);
-        res.status(500).json({ success: false, message: 'Server error while creating summary.' });
+// --- Admin Timetable Bulk Update ---
+app.post('/api/admin/timetable/bulk-update', async (req, res) => {
+  try {
+    const { branch, year, section, semester, timetableEntries } = req.body || {};
+    if (!branch || !year || !section || !Array.isArray(timetableEntries)) {
+      return res.status(400).json({ success: false, message: 'branch, year, section and timetableEntries are required' });
     }
+
+    const yr = Number(year);
+    // Remove existing rows for this class
+    await Timetable.deleteMany({ branch, year: yr, section });
+
+    // Prepare new rows with required fields
+    const rowsToInsert = timetableEntries.map(e => ({
+      day: e.day,
+      startTime: e.startTime,
+      subject: e.subject,
+      facultyId: e.facultyId,
+      room: e.room,
+      branch,
+      year: yr,
+      section,
+      ...(semester ? { semester } : {})
+    })).filter(r => r.day && r.startTime && r.subject);
+
+    if (rowsToInsert.length > 0) {
+      await Timetable.insertMany(rowsToInsert);
+    }
+
+    return res.json({ success: true, inserted: rowsToInsert.length });
+  } catch (err) {
+    console.error('Timetable bulk update error:', err);
+    return res.status(500).json({ success: false, message: 'Server error while saving timetable' });
+  }
+});
+
+// --- Admin Timetable View ---
+app.get('/api/admin/timetable', async (req, res) => {
+  try {
+    const { branch, year, section, semester } = req.query;
+    if (!branch || !year || !section) {
+      return res.status(400).json({ success: false, message: 'branch, year and section are required' });
+    }
+    const filter = { branch, year: Number(year), section };
+    if (semester) filter.semester = semester;
+
+    const rows = await Timetable.find(filter).sort({ day: 1, startTime: 1 });
+    return res.json({ success: true, timetable: rows });
+  } catch (err) {
+    console.error('Admin timetable fetch error:', err);
+    return res.status(500).json({ success: false, message: 'Server error while fetching timetable' });
+  }
+});
+
+// --- Admin User Management ---
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const users = await User.find({}).sort({ role: 1, name: 1 }).lean();
+    res.json({ success: true, users });
+  } catch (err) {
+    console.error('Users fetch error:', err);
+    res.status(500).json({ success: false, message: 'Failed to load users.' });
+  }
+});
+
+app.post('/api/admin/users', async (req, res) => {
+  try {
+    const { name, email, role, department, roll, password, branch, year, section, semester } = req.body || {};
+    if (!name || !role || !roll || !password) {
+      return res.status(400).json({ success: false, message: 'name, role, roll and password are required.' });
+    }
+    const existing = await User.findOne({ roll });
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'User with this roll already exists.' });
+    }
+    const user = await User.create({ name, email, role, department, roll, password, branch, year, section, semester });
+    const { password: _pw, ...payload } = user.toObject();
+    res.json({ success: true, user: payload });
+  } catch (err) {
+    console.error('User create error:', err);
+    res.status(500).json({ success: false, message: 'Failed to create user.' });
+  }
+});
+
+app.put('/api/admin/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, role, department, roll, password, branch, year, section, semester } = req.body || {};
+    const update = { name, email, role, department, roll, branch, year, section, semester };
+    if (!password || String(password).trim() === '') {
+      // do not update password if empty
+      delete update.password;
+    } else {
+      update.password = password;
+    }
+    Object.keys(update).forEach(k => update[k] === undefined && delete update[k]);
+    const user = await User.findByIdAndUpdate(id, update, { new: true });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    const { password: _pw, ...payload } = user.toObject();
+    res.json({ success: true, user: payload });
+  } catch (err) {
+    console.error('User update error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update user.' });
+  }
+});
+
+app.delete('/api/admin/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await User.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ success: false, message: 'User not found.' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('User delete error:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete user.' });
+  }
 });
 
 // ========================================================
