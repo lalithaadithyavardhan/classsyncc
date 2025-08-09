@@ -499,30 +499,58 @@ app.post('/api/faculty/attendance/session', async (req, res) => {
 app.get('/api/filter-options', async (req, res) => {
     const { field } = req.query;
     console.log(`\n[API HIT] /api/filter-options for field: "${field}"`);
+    console.log(`[QUERY PARAMS] All params:`, req.query);
     
     try {
         if (!field) {
+            console.log('[ERROR] Missing field parameter');
             return res.status(400).json({ success: false, message: 'A "field" parameter is required.' });
+        }
+
+        // Validate field name
+        const validFields = ['branch', 'year', 'section', 'semester', 'subject'];
+        if (!validFields.includes(field)) {
+            console.log(`[ERROR] Invalid field: "${field}". Valid fields are:`, validFields);
+            return res.status(400).json({ success: false, message: `Invalid field. Valid fields are: ${validFields.join(', ')}` });
         }
 
         const filterQuery = {};
         if (req.query.branch) filterQuery.branch = req.query.branch;
         if (req.query.year) filterQuery.year = Number(req.query.year);
         if (req.query.section) filterQuery.section = req.query.section;
+        if (req.query.semester) filterQuery.semester = req.query.semester;
 
-        console.log('[QUERYING DB] with filter:', filterQuery);
+        console.log('[QUERYING DB] with filter:', JSON.stringify(filterQuery, null, 2));
+
+        // Check if collection has any data first
+        const totalDocs = await Timetable.countDocuments();
+        console.log(`[DB INFO] Total documents in timetables collection: ${totalDocs}`);
+
+        if (totalDocs === 0) {
+            console.log('[WARNING] No documents found in timetables collection');
+            return res.json({ success: true, options: [] });
+        }
 
         // Use .distinct() to get unique values for the requested field
         const options = await Timetable.distinct(field, filterQuery);
         
-        console.log(`[QUERY RESULT] Found ${options.length} options:`, options);
+        console.log(`[QUERY RESULT] Found ${options.length} options for field "${field}":`, options);
 
-        options.sort((a, b) => (field === 'year' ? a - b : String(a).localeCompare(String(b))));
+        // Sort the options
+        options.sort((a, b) => {
+            if (field === 'year') {
+                return a - b;
+            } else {
+                return String(a).localeCompare(String(b));
+            }
+        });
 
+        console.log(`[FINAL RESULT] Returning ${options.length} sorted options:`, options);
         res.json({ success: true, options });
 
     } catch (err) {
         console.error(`[SERVER ERROR] while fetching filter options for field: "${field}"`, err);
+        console.error('[ERROR DETAILS]', err.message);
         res.status(500).json({ success: false, message: 'Server error while fetching filter options.' });
     }
 });
