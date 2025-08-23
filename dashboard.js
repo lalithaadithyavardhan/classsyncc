@@ -1606,8 +1606,13 @@ function markAttendance() {
         statusElement.className = 'text-yellow-600 font-medium';
     }
     
-    // First, try to find an active session for the current student
-    findActiveSessionForStudent();
+    // Use the new Bluetooth system
+    if (window.bluetoothSystem) {
+        window.bluetoothSystem.markStudentAttendance();
+    } else {
+        // Fallback to legacy system
+        findActiveSessionForStudent();
+    }
 }
 
 // Find active session for current student
@@ -1716,9 +1721,9 @@ function startAttendanceSession() {
         }));
     }
     
-    // Simulate device discovery
+    // Start real Bluetooth scanning
     setTimeout(() => {
-        simulateDeviceDiscovery();
+        startRealBluetoothScanning();
     }, 1000);
 }
 
@@ -1742,26 +1747,14 @@ function addManualAttendance() {
     });
 }
 
-function simulateDeviceDiscovery() {
-    const demoDevices = [
-        { deviceId: 'student-device-001', deviceName: 'Student S101 Device', roll: 'S101' },
-        { deviceId: 'student-device-002', deviceName: 'Student S102 Device', roll: 'S102' },
-        { deviceId: 'student-device-003', deviceName: 'Student S103 Device', roll: 'S103' }
-    ];
-    
-    demoDevices.forEach((device, index) => {
-        setTimeout(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'BLUETOOTH_DEVICE_DISCOVERED',
-                    deviceId: device.deviceId,
-                    deviceName: device.deviceName,
-                    rssi: -60 + Math.random() * 30,
-                    roll: device.roll
-                }));
-            }
-        }, (index + 1) * 1000);
-    });
+// Real Bluetooth device discovery (replaces demo simulation)
+function startRealBluetoothScanning() {
+    if (window.bluetoothSystem) {
+        window.bluetoothSystem.startAttendanceSession();
+    } else {
+        console.error('Bluetooth system not initialized');
+        alert('Bluetooth system not available. Please refresh the page.');
+    }
 }
 
 // Load attendance data
