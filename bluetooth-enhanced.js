@@ -111,6 +111,68 @@ class BluetoothAttendanceSystem {
         this.checkForStudentSignals();
     }
 
+    // Send attendance signal (STUDENT SIDE) - NO DEVICE CONNECTION NEEDED
+    async sendAttendanceSignal() {
+        try {
+            this.showStatus('Broadcasting attendance signal...', 'info');
+            
+            // In a real implementation, this would:
+            // 1. Create a Bluetooth advertisement with student info
+            // 2. Broadcast it without trying to connect to any device
+            // 3. Faculty system would detect this advertisement
+            
+            // For now, we'll store the signal in localStorage so faculty can detect it
+            // This is a temporary solution until real Bluetooth advertisement is implemented
+            
+            const studentRoll = localStorage.getItem('currentUserId') || 'S101';
+            const studentName = localStorage.getItem('currentUserName') || 'Student';
+            
+            const signal = {
+                deviceId: 'student-device-' + Date.now(),
+                studentRoll: studentRoll,
+                studentName: studentName,
+                rssi: -65 + Math.random() * 20,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Store the signal so faculty can detect it
+            this.storeStudentSignal(signal);
+            
+            // Also try to send via WebSocket if available (for cross-instance communication)
+            this.sendSignalViaWebSocket(signal);
+            
+            setTimeout(() => {
+                this.showStatus('Attendance signal sent successfully!', 'success');
+                
+                // Update student attendance display
+                this.updateStudentAttendanceDisplay();
+                
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Attendance signal error:', error);
+            this.showError(`Attendance signal failed: ${error.message}`);
+        }
+    }
+
+    // Send signal via WebSocket for cross-instance communication
+    sendSignalViaWebSocket(signal) {
+        try {
+            // Try to send via WebSocket if available
+            if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+                window.ws.send(JSON.stringify({
+                    type: 'BLUETOOTH_ATTENDANCE_SIGNAL',
+                    data: signal
+                }));
+                console.log('Signal sent via WebSocket:', signal);
+            } else {
+                console.log('WebSocket not available, using localStorage only');
+            }
+        } catch (error) {
+            console.error('WebSocket signal error:', error);
+        }
+    }
+
     // Check for student signals (FACULTY SIDE)
     checkForStudentSignals() {
         try {
@@ -120,7 +182,19 @@ class BluetoothAttendanceSystem {
             const signals = this.getStudentSignalsFromStorage();
             console.log('Checking for student signals. Found:', signals.length);
             
-            signals.forEach(signal => {
+            // Also check for signals in sessionStorage (which might be more accessible)
+            const sessionSignals = this.getStudentSignalsFromSessionStorage();
+            console.log('Checking session storage signals. Found:', sessionSignals.length);
+            
+            // Also check for WebSocket signals
+            const wsSignals = this.getWebSocketSignals();
+            console.log('Checking WebSocket signals. Found:', wsSignals.length);
+            
+            // Combine all sources
+            const allSignals = [...signals, ...sessionSignals, ...wsSignals];
+            console.log('Total signals found:', allSignals.length);
+            
+            allSignals.forEach(signal => {
                 if (!this.discoveredDevices.has(signal.deviceId)) {
                     console.log('New student signal detected!', signal);
                     // New student signal detected!
@@ -137,8 +211,14 @@ class BluetoothAttendanceSystem {
                 }
             });
             
+            // If no signals found, show a helpful message
+            if (allSignals.length === 0) {
+                this.showStatus('No student signals detected yet. Students need to send attendance signals.', 'info');
+            }
+            
         } catch (error) {
             console.error('Error checking for student signals:', error);
+            this.showError(`Error checking for signals: ${error.message}`);
         }
     }
 
@@ -153,6 +233,34 @@ class BluetoothAttendanceSystem {
             }
         } catch (error) {
             console.error('Error reading student signals:', error);
+        }
+        return [];
+    }
+
+    // Get student signals from sessionStorage (alternative storage)
+    getStudentSignalsFromSessionStorage() {
+        try {
+            const signals = sessionStorage.getItem('studentAttendanceSignals');
+            if (signals) {
+                const parsed = JSON.parse(signals);
+                console.log('Retrieved signals from sessionStorage:', parsed);
+                return parsed;
+            }
+        } catch (error) {
+            console.error('Error reading sessionStorage signals:', error);
+        }
+        return [];
+    }
+
+    // Get WebSocket signals (for cross-instance communication)
+    getWebSocketSignals() {
+        try {
+            // Check if there are any signals received via WebSocket
+            if (window.receivedSignals && Array.isArray(window.receivedSignals)) {
+                return window.receivedSignals;
+            }
+        } catch (error) {
+            console.error('Error reading WebSocket signals:', error);
         }
         return [];
     }
@@ -276,50 +384,10 @@ class BluetoothAttendanceSystem {
         }
     }
 
-    // Send attendance signal (STUDENT SIDE) - NO DEVICE CONNECTION NEEDED
-    async sendAttendanceSignal() {
-        try {
-            this.showStatus('Broadcasting attendance signal...', 'info');
-            
-            // In a real implementation, this would:
-            // 1. Create a Bluetooth advertisement with student info
-            // 2. Broadcast it without trying to connect to any device
-            // 3. Faculty system would detect this advertisement
-            
-            // For now, we'll store the signal in localStorage so faculty can detect it
-            // This is a temporary solution until real Bluetooth advertisement is implemented
-            
-            const studentRoll = localStorage.getItem('currentUserId') || 'S101';
-            const studentName = localStorage.getItem('currentUserName') || 'Student';
-            
-            const signal = {
-                deviceId: 'student-device-' + Date.now(),
-                studentRoll: studentRoll,
-                studentName: studentName,
-                rssi: -65 + Math.random() * 20,
-                timestamp: new Date().toISOString()
-            };
-            
-            // Store the signal so faculty can detect it
-            this.storeStudentSignal(signal);
-            
-            setTimeout(() => {
-                this.showStatus('Attendance signal sent successfully!', 'success');
-                
-                // Update student attendance display
-                this.updateStudentAttendanceDisplay();
-                
-            }, 2000);
-            
-        } catch (error) {
-            console.error('Attendance signal error:', error);
-            this.showError(`Attendance signal failed: ${error.message}`);
-        }
-    }
-
     // Store student signal for faculty detection (temporary solution)
     storeStudentSignal(signal) {
         try {
+            // Store in both localStorage and sessionStorage for better accessibility
             const existingSignals = this.getStudentSignalsFromStorage();
             existingSignals.push(signal);
             
@@ -330,7 +398,10 @@ class BluetoothAttendanceSystem {
             
             localStorage.setItem('studentAttendanceSignals', JSON.stringify(existingSignals));
             
-            console.log('Student signal stored:', signal);
+            // Also store in sessionStorage
+            sessionStorage.setItem('studentAttendanceSignals', JSON.stringify(existingSignals));
+            
+            console.log('Student signal stored in both storages:', signal);
             console.log('All signals in storage:', existingSignals);
             
         } catch (error) {
@@ -442,8 +513,54 @@ class BluetoothAttendanceSystem {
         console.log('Bluetooth Attendance System initialized');
         console.log('Mode: Students send signals, Faculty scans for signals');
         
+        // Initialize WebSocket signal receiver
+        this.initWebSocketReceiver();
+        
         // Check for existing sessions
         this.checkExistingSessions();
+    }
+
+    // Initialize WebSocket signal receiver
+    initWebSocketReceiver() {
+        try {
+            // Initialize received signals array
+            if (!window.receivedSignals) {
+                window.receivedSignals = [];
+            }
+            
+            // Set up WebSocket message handler
+            if (window.ws) {
+                window.ws.addEventListener('message', (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        if (message.type === 'BLUETOOTH_ATTENDANCE_SIGNAL') {
+                            console.log('Received WebSocket signal:', message.data);
+                            window.receivedSignals.push(message.data);
+                            
+                            // If faculty is scanning, immediately process the signal
+                            if (this.isScanning) {
+                                this.onDeviceDiscovered({
+                                    deviceId: message.data.deviceId,
+                                    deviceName: message.data.studentName || 'Student Device',
+                                    rssi: message.data.rssi || -65,
+                                    roll: message.data.studentRoll,
+                                    isReal: true,
+                                    timestamp: message.data.timestamp
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error processing WebSocket message:', error);
+                    }
+                });
+                
+                console.log('WebSocket signal receiver initialized');
+            } else {
+                console.log('WebSocket not available, using localStorage only');
+            }
+        } catch (error) {
+            console.error('Error initializing WebSocket receiver:', error);
+        }
     }
 
     // Check for existing attendance sessions
