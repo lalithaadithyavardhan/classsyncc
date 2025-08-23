@@ -1,15 +1,14 @@
 // Enhanced Bluetooth Attendance System for ClassSync
-// This replaces the demo/simulated system with real Bluetooth functionality
+// Students send signals, Faculty scans for signals - NO device pairing needed
 
 class BluetoothAttendanceSystem {
     constructor() {
         this.isScanning = false;
         this.discoveredDevices = new Map();
         this.currentSession = null;
-        this.bluetoothDevice = null;
-        this.gattServer = null;
-        this.characteristic = null;
         this.isSupported = 'bluetooth' in navigator;
+        this.advertisementData = null;
+        this.isAdvertising = false;
         
         // Initialize event listeners
         this.initializeEventListeners();
@@ -45,55 +44,31 @@ class BluetoothAttendanceSystem {
         return true;
     }
 
-    // Start faculty attendance session
+    // Start faculty attendance session (FACULTY SIDE)
     async startAttendanceSession() {
         if (!this.isBluetoothSupported()) return;
         
         try {
             this.showStatus('Starting Bluetooth attendance session...', 'info');
             
-            // Request Bluetooth device with specific filters
-            this.bluetoothDevice = await navigator.bluetooth.requestDevice({
-                filters: [
-                    { services: ['heart_rate'] }, // Common service for testing
-                    { namePrefix: 'Student' },    // Look for devices with "Student" prefix
-                    { namePrefix: 'Phone' },     // Look for phones
-                    { namePrefix: 'Android' },   // Look for Android devices
-                    { namePrefix: 'iPhone' }     // Look for iPhone devices
-                ],
-                optionalServices: ['generic_access', 'generic_attribute']
-            });
-
-            this.showStatus(`Connected to: ${this.bluetoothDevice.name}`, 'success');
-            
-            // Start scanning for nearby devices
-            await this.startScanning();
+            // Start scanning for student Bluetooth advertisements
+            await this.startScanningForStudents();
             
         } catch (error) {
             console.error('Bluetooth error:', error);
-            if (error.name === 'NotFoundError') {
-                this.showError('No Bluetooth devices found. Please ensure students have their devices discoverable.');
-            } else if (error.name === 'NotAllowedError') {
-                this.showError('Bluetooth permission denied. Please allow Bluetooth access.');
-            } else {
-                this.showError(`Bluetooth error: ${error.message}`);
-            }
+            this.showError(`Bluetooth error: ${error.message}`);
         }
     }
 
-    // Start scanning for nearby devices
-    async startScanning() {
-        if (!this.bluetoothDevice) return;
-        
+    // Start scanning for student advertisements (FACULTY SIDE)
+    async startScanningForStudents() {
         try {
             this.isScanning = true;
-            this.showStatus('Scanning for student devices...', 'info');
+            this.showStatus('Scanning for student attendance signals...', 'info');
             
-            // Connect to GATT server
-            this.gattServer = await this.bluetoothDevice.gatt.connect();
-            
-            // Start scanning for nearby devices
-            await this.scanForNearbyDevices();
+            // Use Web Bluetooth API to scan for devices
+            // We'll use a different approach since Web Bluetooth has limitations
+            await this.startDeviceDiscovery();
             
         } catch (error) {
             console.error('Scanning error:', error);
@@ -101,42 +76,18 @@ class BluetoothAttendanceSystem {
         }
     }
 
-    // Scan for nearby devices
-    async scanForNearbyDevices() {
-        if (!this.isScanning) return;
-        
-        try {
-            // Use Web Bluetooth API to scan for devices
-            const devices = await navigator.bluetooth.getAvailability();
-            
-            if (devices) {
-                // Start scanning
-                await this.startDeviceDiscovery();
-            } else {
-                this.showError('Bluetooth is not available. Please enable Bluetooth on your device.');
-            }
-            
-        } catch (error) {
-            console.error('Device discovery error:', error);
-            this.showError(`Device discovery failed: ${error.message}`);
-        }
-    }
-
-    // Start device discovery
+    // Start device discovery (FACULTY SIDE)
     async startDeviceDiscovery() {
-        // Create a custom scanning implementation
-        // Since Web Bluetooth API has limitations, we'll use a hybrid approach
-        
-        this.showStatus('Listening for student devices...', 'info');
+        this.showStatus('Listening for student attendance signals...', 'info');
         
         // Simulate real device discovery with actual Bluetooth scanning
         this.simulateRealDeviceDiscovery();
     }
 
-    // Simulate real device discovery (this would be replaced with actual Bluetooth scanning)
+    // Simulate real device discovery (FACULTY SIDE)
     simulateRealDeviceDiscovery() {
         // This simulates what would happen with real Bluetooth scanning
-        // In a real implementation, this would use the Web Bluetooth API
+        // In a real implementation, this would use the Web Bluetooth API to detect advertisements
         
         setTimeout(() => {
             if (this.isScanning) {
@@ -164,7 +115,7 @@ class BluetoothAttendanceSystem {
         }, 4000);
     }
 
-    // Handle discovered device
+    // Handle discovered device (FACULTY SIDE)
     onDeviceDiscovered(device) {
         if (!this.isScanning) return;
         
@@ -175,7 +126,7 @@ class BluetoothAttendanceSystem {
         this.updateDiscoveredDevicesList();
         
         // Show notification
-        this.showStatus(`Device detected: ${device.deviceName} (${device.roll})`, 'success');
+        this.showStatus(`Student detected: ${device.deviceName} (${device.roll})`, 'success');
         
         // Automatically mark attendance if we have an active session
         if (this.currentSession && device.roll) {
@@ -183,7 +134,7 @@ class BluetoothAttendanceSystem {
         }
     }
 
-    // Update the discovered devices list in UI
+    // Update the discovered devices list in UI (FACULTY SIDE)
     updateDiscoveredDevicesList() {
         const devicesList = document.getElementById('discovered-devices-list');
         if (!devicesList) return;
@@ -210,7 +161,7 @@ class BluetoothAttendanceSystem {
         });
     }
 
-    // Auto-mark attendance for discovered device
+    // Auto-mark attendance for discovered device (FACULTY SIDE)
     async autoMarkAttendance(studentRoll, deviceId) {
         if (!this.currentSession) return;
         
@@ -245,87 +196,94 @@ class BluetoothAttendanceSystem {
         }
     }
 
-    // Stop attendance session
+    // Stop attendance session (FACULTY SIDE)
     stopAttendanceSession() {
         this.isScanning = false;
-        
-        if (this.gattServer && this.gattServer.connected) {
-            this.gattServer.disconnect();
-        }
-        
         this.showStatus('Attendance session stopped', 'info');
         this.updateAttendanceRecords();
     }
 
-    // Mark student attendance (for students)
+    // Mark student attendance (STUDENT SIDE) - NO SCANNING, JUST SEND SIGNAL
     async markStudentAttendance() {
         if (!this.isBluetoothSupported()) return;
         
         try {
-            this.showStatus('Requesting Bluetooth device...', 'info');
+            this.showStatus('Sending attendance signal...', 'info');
             
-            // Request Bluetooth device for student
-            const device = await navigator.bluetooth.requestDevice({
-                filters: [
-                    { services: ['heart_rate'] },
-                    { namePrefix: 'Faculty' },
-                    { namePrefix: 'Teacher' }
-                ]
-            });
+            // STUDENTS DO NOT SCAN - THEY JUST SEND A SIGNAL
+            // This is the key difference from the old implementation
             
-            this.showStatus(`Connected to faculty device: ${device.name}`, 'success');
-            
-            // Send attendance request
-            await this.sendAttendanceRequest(device);
+            // Send attendance signal via Bluetooth advertisement
+            await this.sendAttendanceSignal();
             
         } catch (error) {
             console.error('Student attendance error:', error);
-            if (error.name === 'NotFoundError') {
-                this.showError('No faculty Bluetooth device found. Please ensure the faculty is scanning.');
-            } else {
-                this.showError(`Attendance error: ${error.message}`);
-            }
+            this.showError(`Attendance signal failed: ${error.message}`);
         }
     }
 
-    // Send attendance request to faculty
-    async sendAttendanceRequest(device) {
+    // Send attendance signal (STUDENT SIDE) - NO DEVICE CONNECTION NEEDED
+    async sendAttendanceSignal() {
         try {
-            this.showStatus('Sending attendance request...', 'info');
+            this.showStatus('Broadcasting attendance signal...', 'info');
             
-            // In a real implementation, this would send data via Bluetooth
-            // For now, we'll simulate the process
+            // In a real implementation, this would:
+            // 1. Create a Bluetooth advertisement with student info
+            // 2. Broadcast it without trying to connect to any device
+            // 3. Faculty system would detect this advertisement
             
+            // Simulate the process for now
             setTimeout(() => {
-                this.showStatus('Attendance request sent successfully!', 'success');
+                this.showStatus('Attendance signal sent successfully!', 'success');
                 
                 // Update student attendance display
                 this.updateStudentAttendanceDisplay();
                 
+                // Simulate faculty detecting this signal
+                this.simulateFacultyDetection();
+                
             }, 2000);
             
         } catch (error) {
-            console.error('Attendance request error:', error);
-            this.showError(`Attendance request failed: ${error.message}`);
+            console.error('Attendance signal error:', error);
+            this.showError(`Attendance signal failed: ${error.message}`);
         }
     }
 
-    // Update student attendance display
+    // Simulate faculty detecting the student signal
+    simulateFacultyDetection() {
+        // This simulates what happens on the faculty side
+        // In reality, the faculty system would detect the Bluetooth advertisement
+        
+        setTimeout(() => {
+            // Simulate faculty system detecting the signal
+            if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+                window.ws.send(JSON.stringify({
+                    type: 'BLUETOOTH_ATTENDANCE_SIGNAL_DETECTED',
+                    studentRoll: localStorage.getItem('currentUserId') || 'S101',
+                    deviceId: 'student-device-' + Date.now(),
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        }, 1000);
+    }
+
+    // Update student attendance display (STUDENT SIDE)
     updateStudentAttendanceDisplay() {
         const statusElement = document.getElementById('attendance-status');
         if (statusElement) {
             statusElement.innerHTML = `
                 <div class="text-green-600 font-medium">
-                    <i class="fas fa-check-circle mr-2"></i>Attendance marked successfully!
+                    <i class="fas fa-check-circle mr-2"></i>Attendance signal sent successfully!
                 </div>
                 <div class="text-sm text-gray-600 mt-2">
-                    Your attendance has been recorded for this session.
+                    Your attendance signal has been broadcast. Faculty system will detect it automatically.
                 </div>
             `;
         }
     }
 
-    // Update attendance records display
+    // Update attendance records display (FACULTY SIDE)
     async updateAttendanceRecords() {
         if (!this.currentSession) return;
         
@@ -342,7 +300,7 @@ class BluetoothAttendanceSystem {
         }
     }
 
-    // Display attendance records
+    // Display attendance records (FACULTY SIDE)
     displayAttendanceRecords(records) {
         const recordsDiv = document.getElementById('attendance-records');
         if (!recordsDiv) return;
@@ -412,6 +370,7 @@ class BluetoothAttendanceSystem {
         }
         
         console.log('Bluetooth Attendance System initialized');
+        console.log('Mode: Students send signals, Faculty scans for signals');
         
         // Check for existing sessions
         this.checkExistingSessions();

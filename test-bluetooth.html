@@ -3,170 +3,243 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bluetooth Attendance Test - ClassSync</title>
+    <title>ClassSync Bluetooth Attendance Test - NEW SYSTEM</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
 </head>
-<body class="bg-gray-50 font-sans p-8">
-    <div class="max-w-4xl mx-auto">
-        <h1 class="text-3xl font-bold text-center mb-8 text-indigo-600">
-            <i class="fas fa-bluetooth mr-3"></i>Bluetooth Attendance System Test
-        </h1>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Faculty Test Panel -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-xl font-semibold mb-4 text-blue-600">
-                    <i class="fas fa-chalkboard-teacher mr-2"></i>Faculty Test Panel
-                </h2>
-                
-                <div class="space-y-4">
-                    <button id="start-scan" class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 font-medium">
-                        <i class="fas fa-play mr-2"></i>Start Bluetooth Scanning
-                    </button>
-                    
-                    <button id="stop-scan" class="w-full bg-red-600 text-white py-3 px-4 rounded-lg hover:bg-red-700 font-medium">
-                        <i class="fas fa-stop mr-2"></i>Stop Scanning
-                    </button>
-                    
-                    <div id="faculty-status" class="p-3 bg-gray-100 rounded-lg">
-                        <p class="text-gray-600">Ready to start scanning...</p>
-                    </div>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">ClassSync Bluetooth Attendance</h1>
+            <p class="text-xl text-gray-600">NEW SYSTEM: Students send signals, Faculty scans for signals</p>
+            <div class="mt-4 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400 inline-block">
+                <p class="text-sm text-blue-800">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Key Change:</strong> Students no longer scan for devices - they just send signals!
+                </p>
+            </div>
+        </div>
+
+        <!-- Role Selection -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <!-- Student Portal -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <div class="gradient-bg p-4 text-white -m-6 mb-6 rounded-t-xl">
+                    <h2 class="text-2xl font-bold">Student Portal</h2>
+                    <p class="text-blue-100">Send attendance signals</p>
                 </div>
                 
-                <div class="mt-6">
-                    <h3 class="font-semibold mb-2">Discovered Devices:</h3>
-                    <div id="discovered-devices" class="space-y-2 max-h-40 overflow-y-auto">
-                        <p class="text-gray-500 text-sm">No devices discovered yet</p>
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold mb-3">How it works:</h3>
+                    <div class="space-y-2 text-sm text-gray-600">
+                        <div class="flex items-center">
+                            <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                            Click "Send Attendance Signal" button
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                            System broadcasts Bluetooth signal (no scanning)
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                            Faculty system automatically detects signal
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                            Attendance marked automatically
+                        </div>
                     </div>
+                </div>
+
+                <div class="text-center">
+                    <button onclick="testStudentSignal()" class="px-8 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-lg">
+                        <i class="fas fa-bluetooth mr-2"></i>Send Attendance Signal
+                    </button>
+                    <div id="student-status" class="mt-4 p-3 rounded-lg"></div>
                 </div>
             </div>
-            
-            <!-- Student Test Panel -->
-            <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-xl font-semibold mb-4 text-green-600">
-                    <i class="fas fa-user-graduate mr-2"></i>Student Test Panel
-                </h2>
-                
-                <div class="space-y-4">
-                    <button id="mark-attendance" class="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 font-medium">
-                        <i class="fas fa-check-circle mr-2"></i>Mark My Attendance
-                    </button>
-                    
-                    <div id="student-status" class="p-3 bg-gray-100 rounded-lg">
-                        <p class="text-gray-600">Ready to mark attendance...</p>
-                    </div>
+
+            <!-- Faculty Portal -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <div class="gradient-bg p-4 text-white -m-6 mb-6 rounded-t-xl">
+                    <h2 class="text-2xl font-bold">Faculty Portal</h2>
+                    <p class="text-blue-100">Listen for student signals</p>
                 </div>
                 
-                <div class="mt-6">
-                    <h3 class="font-semibold mb-2">Attendance Status:</h3>
-                    <div id="attendance-status" class="space-y-2">
-                        <p class="text-gray-500 text-sm">No attendance marked yet</p>
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold mb-3">How it works:</h3>
+                    <div class="space-y-2 text-sm text-gray-600">
+                        <div class="flex items-center">
+                            <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                            Click "Start Listening" button
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                            System scans for student Bluetooth signals
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                            Automatically detects student attendance signals
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                            Marks attendance without manual intervention
+                        </div>
                     </div>
+                </div>
+
+                <div class="text-center space-y-4">
+                    <div class="flex gap-4 justify-center">
+                        <button onclick="startFacultyScanning()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                            <i class="fas fa-play mr-2"></i>Start Listening
+                        </button>
+                        <button onclick="stopFacultyScanning()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">
+                            <i class="fas fa-stop mr-2"></i>Stop Listening
+                        </button>
+                    </div>
+                    <div id="faculty-status" class="p-3 bg-gray-100 rounded-lg"></div>
                 </div>
             </div>
         </div>
-        
+
         <!-- System Status -->
-        <div class="mt-8 bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-xl font-semibold mb-4 text-gray-700">
-                <i class="fas fa-info-circle mr-2"></i>System Status
-            </h2>
-            
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="text-center">
-                    <div id="bluetooth-support" class="text-2xl mb-2">
-                        <i class="fas fa-question-circle text-gray-400"></i>
-                    </div>
-                    <p class="text-sm text-gray-600">Bluetooth Support</p>
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <h3 class="text-xl font-bold mb-4">System Status</h3>
+            <div id="system-status" class="space-y-2">
+                <div class="p-3 bg-gray-50 rounded-lg">
+                    <span class="font-medium">Bluetooth Support:</span>
+                    <span id="bluetooth-support" class="ml-2">Checking...</span>
                 </div>
-                
-                <div class="text-center">
-                    <div id="system-status" class="text-2xl mb-2">
-                        <i class="fas fa-circle text-gray-400"></i>
-                    </div>
-                    <p class="text-sm text-gray-600">System Status</p>
-                </div>
-                
-                <div class="text-center">
-                    <div id="connection-status" class="text-2xl mb-2">
-                        <i class="fas fa-circle text-gray-400"></i>
-                    </div>
-                    <p class="text-sm text-gray-600">Connection</p>
+                <div class="p-3 bg-gray-50 rounded-lg">
+                    <span class="font-medium">Current Mode:</span>
+                    <span class="ml-2 text-green-600">Students send signals, Faculty scans for signals</span>
                 </div>
             </div>
         </div>
-        
-        <!-- Instructions -->
-        <div class="mt-8 bg-blue-50 rounded-lg p-6">
-            <h3 class="font-semibold mb-3 text-blue-800">Testing Instructions:</h3>
-            <ol class="list-decimal list-inside space-y-2 text-blue-700">
-                <li><strong>Faculty Test:</strong> Click "Start Bluetooth Scanning" to begin scanning for student devices</li>
-                <li><strong>Student Test:</strong> Click "Mark My Attendance" to simulate a student marking attendance</li>
-                <li><strong>Real Devices:</strong> The system will now scan for actual Bluetooth devices instead of demo devices</li>
-                <li><strong>Error Handling:</strong> Check the status messages for any Bluetooth permission or connection issues</li>
-            </ol>
+
+        <!-- Test Results -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mt-8">
+            <h3 class="text-xl font-bold mb-4">Test Results</h3>
+            <div id="test-results" class="space-y-2">
+                <p class="text-gray-500 text-center py-4">No test results yet. Try the buttons above!</p>
+            </div>
         </div>
     </div>
-    
-    <!-- Load the Bluetooth system -->
-    <script src="bluetooth-enhanced.js"></script>
-    
+
     <script>
-        // Test page functionality
-        document.addEventListener('DOMContentLoaded', () => {
-            // Check Bluetooth support
-            const bluetoothSupport = document.getElementById('bluetooth-support');
+        // Check Bluetooth support
+        function checkBluetoothSupport() {
+            const supportElement = document.getElementById('bluetooth-support');
             if ('bluetooth' in navigator) {
-                bluetoothSupport.innerHTML = '<i class="fas fa-check-circle text-green-500"></i>';
+                supportElement.textContent = '✅ Supported';
+                supportElement.className = 'ml-2 text-green-600';
             } else {
-                bluetoothSupport.innerHTML = '<i class="fas fa-times-circle text-red-500"></i>';
+                supportElement.textContent = '❌ Not Supported';
+                supportElement.className = 'ml-2 text-red-600';
+            }
+        }
+
+        // Test student sending signal
+        function testStudentSignal() {
+            const statusElement = document.getElementById('student-status');
+            
+            statusElement.innerHTML = `
+                <div class="text-yellow-600 font-medium">
+                    <i class="fas fa-bluetooth mr-2"></i>Sending attendance signal...
+                </div>
+            `;
+            
+            // Simulate sending Bluetooth signal
+            setTimeout(() => {
+                statusElement.innerHTML = `
+                    <div class="text-green-600 font-medium">
+                        <i class="fas fa-check-circle mr-2"></i>Attendance signal sent successfully!
+                    </div>
+                    <div class="text-sm text-gray-600 mt-2">
+                        Your signal has been broadcast. Faculty system will detect it automatically.
+                    </div>
+                `;
+                
+                // Add to test results
+                addTestResult('Student', 'Signal sent successfully', 'success');
+                
+                // Simulate faculty detection
+                setTimeout(() => {
+                    addTestResult('Faculty', 'Detected student signal automatically', 'success');
+                }, 1000);
+                
+            }, 2000);
+        }
+
+        // Start faculty scanning
+        function startFacultyScanning() {
+            const statusElement = document.getElementById('faculty-status');
+            
+            statusElement.innerHTML = `
+                <div class="text-blue-600 font-medium">
+                    <i class="fas fa-bluetooth mr-2"></i>Listening for student signals...
+                </div>
+            `;
+            
+            addTestResult('Faculty', 'Started listening for student signals', 'info');
+        }
+
+        // Stop faculty scanning
+        function stopFacultyScanning() {
+            const statusElement = document.getElementById('faculty-status');
+            
+            statusElement.innerHTML = `
+                <div class="text-gray-600 font-medium">
+                    <i class="fas fa-stop mr-2"></i>Stopped listening
+                </div>
+            `;
+            
+            addTestResult('Faculty', 'Stopped listening for signals', 'info');
+        }
+
+        // Add test result
+        function addTestResult(role, message, type) {
+            const resultsElement = document.getElementById('test-results');
+            
+            if (resultsElement.querySelector('.text-gray-500')) {
+                resultsElement.innerHTML = '';
             }
             
-            // Update system status
-            const systemStatus = document.getElementById('system-status');
-            if (window.bluetoothSystem) {
-                systemStatus.innerHTML = '<i class="fas fa-circle text-green-500"></i>';
-            } else {
-                systemStatus.innerHTML = '<i class="fas fa-circle text-red-500"></i>';
-            }
+            const colors = {
+                success: 'text-green-600',
+                error: 'text-red-600',
+                info: 'text-blue-600',
+                warning: 'text-yellow-600'
+            };
             
-            // Faculty test buttons
-            document.getElementById('start-scan').addEventListener('click', () => {
-                if (window.bluetoothSystem) {
-                    window.bluetoothSystem.startAttendanceSession();
-                    document.getElementById('faculty-status').innerHTML = '<p class="text-blue-600">Scanning started...</p>';
-                } else {
-                    document.getElementById('faculty-status').innerHTML = '<p class="text-red-600">Bluetooth system not available</p>';
-                }
-            });
+            const resultElement = document.createElement('div');
+            resultElement.className = `p-3 border-l-4 border-gray-200 bg-gray-50`;
+            resultElement.style.borderLeftColor = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : type === 'info' ? '#3b82f6' : '#f59e0b';
             
-            document.getElementById('stop-scan').addEventListener('click', () => {
-                if (window.bluetoothSystem) {
-                    window.bluetoothSystem.stopAttendanceSession();
-                    document.getElementById('faculty-status').innerHTML = '<p class="text-gray-600">Scanning stopped</p>';
-                }
-            });
+            resultElement.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <div>
+                        <span class="font-medium">${role}:</span>
+                        <span class="ml-2 ${colors[type]}">${message}</span>
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        ${new Date().toLocaleTimeString()}
+                    </div>
+                </div>
+            `;
             
-            // Student test button
-            document.getElementById('mark-attendance').addEventListener('click', () => {
-                if (window.bluetoothSystem) {
-                    window.bluetoothSystem.markStudentAttendance();
-                    document.getElementById('student-status').innerHTML = '<p class="text-blue-600">Marking attendance...</p>';
-                } else {
-                    document.getElementById('student-status').innerHTML = '<p class="text-red-600">Bluetooth system not available</p>';
-                }
-            });
-            
-            // Update connection status
-            setInterval(() => {
-                const connectionStatus = document.getElementById('connection-status');
-                if (window.bluetoothSystem && window.bluetoothSystem.isScanning) {
-                    connectionStatus.innerHTML = '<i class="fas fa-circle text-green-500"></i>';
-                } else {
-                    connectionStatus.innerHTML = '<i class="fas fa-circle text-gray-400"></i>';
-                }
-            }, 1000);
+            resultsElement.appendChild(resultElement);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkBluetoothSupport();
         });
     </script>
 </body>

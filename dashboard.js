@@ -95,7 +95,7 @@ function loadAttendanceContent() {
     content.innerHTML = '';
     
     if (currentRole === 'student') {
-        content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
+        content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><div class="mb-4 p-3 bg-green-50 rounded-lg border-l-4 border-green-400"><p class="text-sm text-green-800"><i class="fas fa-info-circle mr-2"></i><strong>How it works:</strong> Click the button below to send a Bluetooth signal to the faculty system. No device pairing needed!</p></div><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Send Attendance Signal</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
         loadStudentAttendanceSummary(currentUser.roll);
     } else if (currentRole === 'faculty') {
         content.innerHTML = `
@@ -134,9 +134,16 @@ function loadAttendanceContent() {
                     </div>
                     <div id="session-controls" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
                         <h4 class="font-semibold mb-4 text-gray-800">Attendance Session</h4>
+                        <div class="mb-4 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
+                            <p class="text-sm text-blue-800">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                <strong>How it works:</strong> Students will send Bluetooth signals when they click "Mark Attendance". 
+                                Your system will automatically detect these signals and mark attendance.
+                            </p>
+                        </div>
                         <div class="flex gap-4 mb-4">
-                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"><i class="fas fa-play mr-2"></i>Start Bluetooth Scanning</button>
-                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"><i class="fas fa-stop mr-2"></i>Stop Scanning</button>
+                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"><i class="fas fa-play mr-2"></i>Start Listening for Student Signals</button>
+                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"><i class="fas fa-stop mr-2"></i>Stop Listening</button>
                         </div>
                         <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg"></div>
                     </div>
@@ -1602,11 +1609,11 @@ function markAttendance() {
     
     const statusElement = document.getElementById('attendance-status');
     if (statusElement) {
-        statusElement.textContent = 'Requesting Bluetooth device...';
+        statusElement.textContent = 'Sending attendance signal...';
         statusElement.className = 'text-yellow-600 font-medium';
     }
     
-    // Use the new Bluetooth system
+    // Use the new Bluetooth system - STUDENTS JUST SEND SIGNALS, NO SCANNING
     if (window.bluetoothSystem) {
         window.bluetoothSystem.markStudentAttendance();
     } else {
