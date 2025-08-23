@@ -808,6 +808,22 @@ app.get('/api/admin/timetable', async (req, res) => {
 });
 
 // --- Admin User Management ---
+app.get('/api/admin/users/count', async (req, res) => {
+  try {
+    const facultyCount = await User.countDocuments({ role: 'faculty' });
+    const studentCount = await User.countDocuments({ role: 'student' });
+    
+    res.json({ 
+      success: true, 
+      facultyCount, 
+      studentCount 
+    });
+  } catch (err) {
+    console.error('Admin users count API error:', err);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
+
 app.get('/api/admin/users', async (req, res) => {
   try {
     const users = await User.find({}).sort({ role: 1, name: 1 }).lean();
