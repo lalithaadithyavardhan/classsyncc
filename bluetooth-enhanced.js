@@ -9,6 +9,8 @@ class BluetoothAttendanceSystem {
         this.isSupported = 'bluetooth' in navigator;
         this.advertisementData = null;
         this.isAdvertising = false;
+        this.studentSignals = new Map(); // Store incoming student signals
+        this.signalCheckInterval = null; // Interval to check for new signals
         
         // Initialize event listeners
         this.initializeEventListeners();
@@ -66,8 +68,7 @@ class BluetoothAttendanceSystem {
             this.isScanning = true;
             this.showStatus('Scanning for student attendance signals...', 'info');
             
-            // Use Web Bluetooth API to scan for devices
-            // We'll use a different approach since Web Bluetooth has limitations
+            // Start listening for student signals
             await this.startDeviceDiscovery();
             
         } catch (error) {
@@ -80,39 +81,80 @@ class BluetoothAttendanceSystem {
     async startDeviceDiscovery() {
         this.showStatus('Listening for student attendance signals...', 'info');
         
-        // Simulate real device discovery with actual Bluetooth scanning
-        this.simulateRealDeviceDiscovery();
+        // Start checking for incoming student signals
+        this.startSignalDetection();
     }
 
-    // Simulate real device discovery (FACULTY SIDE)
-    simulateRealDeviceDiscovery() {
-        // This simulates what would happen with real Bluetooth scanning
-        // In a real implementation, this would use the Web Bluetooth API to detect advertisements
+    // Start signal detection (FACULTY SIDE)
+    startSignalDetection() {
+        // Clear any existing interval
+        if (this.signalCheckInterval) {
+            clearInterval(this.signalCheckInterval);
+        }
         
-        setTimeout(() => {
+        // Check for new student signals every 1 second
+        this.signalCheckInterval = setInterval(() => {
             if (this.isScanning) {
-                // Simulate finding a real student device
-                this.onDeviceDiscovered({
-                    deviceId: 'real-student-001',
-                    deviceName: 'Adithya\'s Phone',
-                    rssi: -65,
-                    roll: '24P35A1201',
-                    isReal: true
-                });
+                this.checkForNewStudentSignals();
             }
-        }, 2000);
+        }, 1000);
         
-        setTimeout(() => {
-            if (this.isScanning) {
-                this.onDeviceDiscovered({
-                    deviceId: 'real-student-002',
-                    deviceName: 'Bhavana\'s Device',
-                    rssi: -70,
-                    roll: '24P35A1202',
-                    isReal: true
-                });
+        this.showStatus('Signal detection active - waiting for student signals...', 'info');
+    }
+
+    // Check for new student signals (FACULTY SIDE)
+    checkForNewStudentSignals() {
+        // Check if there are any new signals from students
+        // This would normally check Bluetooth advertisements, but for now we'll use a different approach
+        
+        // Check for signals sent via WebSocket or localStorage (temporary solution)
+        this.checkForStudentSignals();
+    }
+
+    // Check for student signals (FACULTY SIDE)
+    checkForStudentSignals() {
+        try {
+            // Check if there are any student signals in localStorage (temporary solution)
+            // In a real implementation, this would use Bluetooth advertisement detection
+            
+            const signals = this.getStudentSignalsFromStorage();
+            console.log('Checking for student signals. Found:', signals.length);
+            
+            signals.forEach(signal => {
+                if (!this.discoveredDevices.has(signal.deviceId)) {
+                    console.log('New student signal detected!', signal);
+                    // New student signal detected!
+                    this.onDeviceDiscovered({
+                        deviceId: signal.deviceId,
+                        deviceName: signal.studentName || 'Student Device',
+                        rssi: signal.rssi || -65,
+                        roll: signal.studentRoll,
+                        isReal: true,
+                        timestamp: signal.timestamp
+                    });
+                } else {
+                    console.log('Signal already processed:', signal.deviceId);
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error checking for student signals:', error);
+        }
+    }
+
+    // Get student signals from storage (temporary solution)
+    getStudentSignalsFromStorage() {
+        try {
+            const signals = localStorage.getItem('studentAttendanceSignals');
+            if (signals) {
+                const parsed = JSON.parse(signals);
+                console.log('Retrieved signals from storage:', parsed);
+                return parsed;
             }
-        }, 4000);
+        } catch (error) {
+            console.error('Error reading student signals:', error);
+        }
+        return [];
     }
 
     // Handle discovered device (FACULTY SIDE)
@@ -140,6 +182,11 @@ class BluetoothAttendanceSystem {
         if (!devicesList) return;
         
         devicesList.innerHTML = '';
+        
+        if (this.discoveredDevices.size === 0) {
+            devicesList.innerHTML = '<p class="text-gray-500 text-center py-4">No student signals detected yet</p>';
+            return;
+        }
         
         this.discoveredDevices.forEach((device, deviceId) => {
             const deviceElement = document.createElement('div');
@@ -199,6 +246,13 @@ class BluetoothAttendanceSystem {
     // Stop attendance session (FACULTY SIDE)
     stopAttendanceSession() {
         this.isScanning = false;
+        
+        // Clear signal detection interval
+        if (this.signalCheckInterval) {
+            clearInterval(this.signalCheckInterval);
+            this.signalCheckInterval = null;
+        }
+        
         this.showStatus('Attendance session stopped', 'info');
         this.updateAttendanceRecords();
     }
@@ -232,15 +286,28 @@ class BluetoothAttendanceSystem {
             // 2. Broadcast it without trying to connect to any device
             // 3. Faculty system would detect this advertisement
             
-            // Simulate the process for now
+            // For now, we'll store the signal in localStorage so faculty can detect it
+            // This is a temporary solution until real Bluetooth advertisement is implemented
+            
+            const studentRoll = localStorage.getItem('currentUserId') || 'S101';
+            const studentName = localStorage.getItem('currentUserName') || 'Student';
+            
+            const signal = {
+                deviceId: 'student-device-' + Date.now(),
+                studentRoll: studentRoll,
+                studentName: studentName,
+                rssi: -65 + Math.random() * 20,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Store the signal so faculty can detect it
+            this.storeStudentSignal(signal);
+            
             setTimeout(() => {
                 this.showStatus('Attendance signal sent successfully!', 'success');
                 
                 // Update student attendance display
                 this.updateStudentAttendanceDisplay();
-                
-                // Simulate faculty detecting this signal
-                this.simulateFacultyDetection();
                 
             }, 2000);
             
@@ -250,22 +317,25 @@ class BluetoothAttendanceSystem {
         }
     }
 
-    // Simulate faculty detecting the student signal
-    simulateFacultyDetection() {
-        // This simulates what happens on the faculty side
-        // In reality, the faculty system would detect the Bluetooth advertisement
-        
-        setTimeout(() => {
-            // Simulate faculty system detecting the signal
-            if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-                window.ws.send(JSON.stringify({
-                    type: 'BLUETOOTH_ATTENDANCE_SIGNAL_DETECTED',
-                    studentRoll: localStorage.getItem('currentUserId') || 'S101',
-                    deviceId: 'student-device-' + Date.now(),
-                    timestamp: new Date().toISOString()
-                }));
+    // Store student signal for faculty detection (temporary solution)
+    storeStudentSignal(signal) {
+        try {
+            const existingSignals = this.getStudentSignalsFromStorage();
+            existingSignals.push(signal);
+            
+            // Keep only recent signals (last 10)
+            if (existingSignals.length > 10) {
+                existingSignals.splice(0, existingSignals.length - 10);
             }
-        }, 1000);
+            
+            localStorage.setItem('studentAttendanceSignals', JSON.stringify(existingSignals));
+            
+            console.log('Student signal stored:', signal);
+            console.log('All signals in storage:', existingSignals);
+            
+        } catch (error) {
+            console.error('Error storing student signal:', error);
+        }
     }
 
     // Update student attendance display (STUDENT SIDE)

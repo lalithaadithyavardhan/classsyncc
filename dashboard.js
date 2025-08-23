@@ -134,13 +134,6 @@ function loadAttendanceContent() {
                     </div>
                     <div id="session-controls" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
                         <h4 class="font-semibold mb-4 text-gray-800">Attendance Session</h4>
-                        <div class="mb-4 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
-                            <p class="text-sm text-blue-800">
-                                <i class="fas fa-info-circle mr-2"></i>
-                                <strong>How it works:</strong> Students will send Bluetooth signals when they click "Mark Attendance". 
-                                Your system will automatically detect these signals and mark attendance.
-                            </p>
-                        </div>
                         <div class="flex gap-4 mb-4">
                             <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"><i class="fas fa-play mr-2"></i>Start Listening for Student Signals</button>
                             <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"><i class="fas fa-stop mr-2"></i>Stop Listening</button>
@@ -148,11 +141,17 @@ function loadAttendanceContent() {
                         <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg"></div>
                     </div>
                 </div>
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div class="bg-white p-6 rounded-lg shadow-md">
                         <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
                         <div id="students-list" class="space-y-2 max-h-96 overflow-y-auto">
                             <p class="text-gray-500 text-center py-8">Select a class to view students</p>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h4 class="font-semibold mb-4 text-gray-800">Detected Student Signals</h4>
+                        <div id="discovered-devices-list" class="space-y-2 max-h-96 overflow-y-auto">
+                            <p class="text-gray-500 text-center py-8">No student signals detected yet</p>
                         </div>
                     </div>
                     <div class="bg-white p-6 rounded-lg shadow-md">
@@ -1246,17 +1245,23 @@ function loadAttendanceContent() {
                     <div id="session-controls" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
                         <h4 class="font-semibold mb-4 text-gray-800">Attendance Session</h4>
                         <div class="flex gap-4 mb-4">
-                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"><i class="fas fa-play mr-2"></i>Start Bluetooth Scanning</button>
-                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"><i class="fas fa-stop mr-2"></i>Stop Scanning</button>
+                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"><i class="fas fa-play mr-2"></i>Start Listening for Student Signals</button>
+                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"><i class="fas fa-stop mr-2"></i>Stop Listening</button>
                         </div>
                         <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg"></div>
                     </div>
                 </div>
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div class="bg-white p-6 rounded-lg shadow-md">
                         <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
                         <div id="students-list" class="space-y-2 max-h-96 overflow-y-auto">
                             <p class="text-gray-500 text-center py-8">Select a class to view students</p>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h4 class="font-semibold mb-4 text-gray-800">Detected Student Signals</h4>
+                        <div id="discovered-devices-list" class="space-y-2 max-h-96 overflow-y-auto">
+                            <p class="text-gray-500 text-center py-8">No student signals detected yet</p>
                         </div>
                     </div>
                     <div class="bg-white p-6 rounded-lg shadow-md">

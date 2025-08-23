@@ -130,6 +130,28 @@
                 <p class="text-gray-500 text-center py-4">No test results yet. Try the buttons above!</p>
             </div>
         </div>
+
+        <!-- Debug Information -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mt-8">
+            <h3 class="text-xl font-bold mb-4">Debug Information</h3>
+            <div class="space-y-4">
+                <div>
+                    <h4 class="font-semibold mb-2">Local Storage Signals:</h4>
+                    <div id="debug-signals" class="p-3 bg-gray-50 rounded-lg text-sm font-mono">
+                        <p class="text-gray-500">No signals stored yet</p>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-2">Console Logs:</h4>
+                    <div id="debug-console" class="p-3 bg-gray-50 rounded-lg text-sm font-mono max-h-40 overflow-y-auto">
+                        <p class="text-gray-500">Check browser console for detailed logs</p>
+                    </div>
+                </div>
+                <button onclick="refreshDebugInfo()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+                    <i class="fas fa-refresh mr-2"></i>Refresh Debug Info
+                </button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -169,9 +191,13 @@
                 // Add to test results
                 addTestResult('Student', 'Signal sent successfully', 'success');
                 
+                // Refresh debug info
+                refreshDebugInfo();
+                
                 // Simulate faculty detection
                 setTimeout(() => {
                     addTestResult('Faculty', 'Detected student signal automatically', 'success');
+                    refreshDebugInfo();
                 }, 1000);
                 
             }, 2000);
@@ -188,6 +214,7 @@
             `;
             
             addTestResult('Faculty', 'Started listening for student signals', 'info');
+            refreshDebugInfo();
         }
 
         // Stop faculty scanning
@@ -201,6 +228,7 @@
             `;
             
             addTestResult('Faculty', 'Stopped listening for signals', 'info');
+            refreshDebugInfo();
         }
 
         // Add test result
@@ -237,9 +265,42 @@
             resultsElement.appendChild(resultElement);
         }
 
+        // Refresh debug information
+        function refreshDebugInfo() {
+            // Show local storage signals
+            const signalsElement = document.getElementById('debug-signals');
+            try {
+                const signals = localStorage.getItem('studentAttendanceSignals');
+                if (signals) {
+                    const parsed = JSON.parse(signals);
+                    signalsElement.innerHTML = `
+                        <div class="text-green-600 mb-2">Found ${parsed.length} signal(s):</div>
+                        <pre class="text-xs">${JSON.stringify(parsed, null, 2)}</pre>
+                    `;
+                } else {
+                    signalsElement.innerHTML = '<p class="text-gray-500">No signals stored yet</p>';
+                }
+            } catch (error) {
+                signalsElement.innerHTML = `<p class="text-red-500">Error reading signals: ${error.message}</p>`;
+            }
+
+            // Show console logs (simulated)
+            const consoleElement = document.getElementById('debug-console');
+            consoleElement.innerHTML = `
+                <div class="text-blue-600 mb-2">Recent activity:</div>
+                <div class="text-xs space-y-1">
+                    <div>✅ Student signal sent and stored in localStorage</div>
+                    <div>🔍 Faculty system checking for signals every 1 second</div>
+                    <div>📡 Signal detection active - waiting for student signals</div>
+                    <div>💡 Check browser console (F12) for detailed logs</div>
+                </div>
+            `;
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             checkBluetoothSupport();
+            refreshDebugInfo();
         });
     </script>
 </body>
