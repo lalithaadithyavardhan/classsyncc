@@ -169,9 +169,30 @@
             if ('bluetooth' in navigator) {
                 supportElement.textContent = '✅ Supported';
                 supportElement.className = 'ml-2 text-green-600';
+                
+                // Add detailed browser info
+                const browserInfo = document.createElement('div');
+                browserInfo.className = 'mt-2 text-xs text-gray-600';
+                browserInfo.innerHTML = `
+                    <div>Browser: ${navigator.userAgent.includes('Chrome') ? 'Chrome' : 'Other'}</div>
+                    <div>Protocol: ${window.location.protocol}</div>
+                    <div>Host: ${window.location.hostname}</div>
+                    <div>Bluetooth API: Available</div>
+                `;
+                supportElement.appendChild(browserInfo);
             } else {
                 supportElement.textContent = '❌ Not Supported';
                 supportElement.className = 'ml-2 text-red-600';
+                
+                // Add troubleshooting info
+                const troubleshootInfo = document.createElement('div');
+                troubleshootInfo.className = 'mt-2 text-xs text-red-600';
+                troubleshootInfo.innerHTML = `
+                    <div>• Use Chrome browser</div>
+                    <div>• Ensure HTTPS connection</div>
+                    <div>• Check device Bluetooth is enabled</div>
+                `;
+                supportElement.appendChild(troubleshootInfo);
             }
         }
 

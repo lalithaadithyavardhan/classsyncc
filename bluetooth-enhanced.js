@@ -512,12 +512,43 @@ class BluetoothAttendanceSystem {
         
         console.log('Bluetooth Attendance System initialized');
         console.log('Mode: Students send signals, Faculty scans for signals');
+        console.log('Browser:', navigator.userAgent);
+        console.log('Bluetooth API available:', !!navigator.bluetooth);
         
         // Initialize WebSocket signal receiver
         this.initWebSocketReceiver();
         
         // Check for existing sessions
         this.checkExistingSessions();
+        
+        // Show browser compatibility info
+        this.showBrowserCompatibilityInfo();
+    }
+    
+    // Show browser compatibility information
+    showBrowserCompatibilityInfo() {
+        const statusElement = document.getElementById('bluetooth-status');
+        if (!statusElement) return;
+        
+        const isChrome = navigator.userAgent.includes('Chrome');
+        const isHttps = window.location.protocol === 'https:';
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        
+        let compatibilityMessage = '';
+        let messageType = 'info';
+        
+        if (!isChrome) {
+            compatibilityMessage = '⚠️ Bluetooth may not work properly in this browser. Chrome is recommended.';
+            messageType = 'warning';
+        } else if (!isHttps && !isLocalhost) {
+            compatibilityMessage = '⚠️ Bluetooth requires HTTPS connection (except on localhost).';
+            messageType = 'warning';
+        } else {
+            compatibilityMessage = '✅ Browser compatible with Bluetooth API';
+            messageType = 'success';
+        }
+        
+        this.showStatus(compatibilityMessage, messageType);
     }
 
     // Initialize WebSocket signal receiver

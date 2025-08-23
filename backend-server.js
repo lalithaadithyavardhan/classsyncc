@@ -582,7 +582,7 @@ app.get('/api/student/attendance/status', async (req, res) => {
     const attendance = await Attendance.findOne({ 
       studentRoll: roll, 
       date: date 
-    }).populate('sessionId', 'facultyId').populate('facultyId', 'name');
+    }).populate('facultyId', 'name');
     
     if (attendance) {
       res.json({
@@ -828,6 +828,81 @@ app.delete('/api/admin/users/:userId', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Failed to delete user' 
+    });
+  }
+});
+
+// ========================================================
+//                  FACULTY ATTENDANCE MARKING
+// ========================================================
+
+// Mark student attendance via Bluetooth
+app.post('/api/faculty/attendance/mark', async (req, res) => {
+  try {
+    const { sessionId, studentRoll, deviceId, method, timestamp } = req.body;
+    
+    if (!sessionId || !studentRoll) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Session ID and student roll are required' 
+      });
+    }
+    
+    // Get the session to find faculty ID
+    const session = await AttendanceSession.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Attendance session not found' 
+      });
+    }
+    
+    // Check if attendance already exists for this student in this session
+    const existingAttendance = await Attendance.findOne({ 
+      sessionId, 
+      studentRoll 
+    });
+    
+    if (existingAttendance) {
+      // Update existing attendance
+      existingAttendance.status = 'present';
+      existingAttendance.method = method || 'bluetooth';
+      existingAttendance.timestamp = timestamp || new Date();
+      existingAttendance.deviceId = deviceId;
+      await existingAttendance.save();
+      
+      res.json({ 
+        success: true, 
+        message: 'Attendance updated successfully',
+        attendance: existingAttendance
+      });
+    } else {
+      // Create new attendance record
+      const attendance = new Attendance({
+        sessionId,
+        studentRoll,
+        facultyId: session.facultyId,
+        status: 'present',
+        method: method || 'bluetooth',
+        timestamp: timestamp || new Date(),
+        deviceId: deviceId,
+        date: session.date
+      });
+      
+      await attendance.save();
+      
+      res.json({ 
+        success: true, 
+        message: 'Attendance marked successfully',
+        attendance
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error marking attendance:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to mark attendance' 
     });
   }
 });

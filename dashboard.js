@@ -95,7 +95,7 @@ function loadAttendanceContent() {
     content.innerHTML = '';
     
     if (currentRole === 'student') {
-        content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><div class="mb-4 p-3 bg-green-50 rounded-lg border-l-4 border-green-400"><p class="text-sm text-green-800"><i class="fas fa-info-circle mr-2"></i><strong>How it works:</strong> Click the button below to send a Bluetooth signal to the faculty system. No device pairing needed!</p></div><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Send Attendance Signal</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
+        content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
         loadStudentAttendanceSummary(currentUser.roll);
     } else if (currentRole === 'faculty') {
         content.innerHTML = `
@@ -1522,7 +1522,7 @@ async function handleAdminSaveTimetable() {
         const response = await fetch('/api/admin/timetable/bulk-update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ branch, year, section, semester, timetableEntries: timetableData })
+            body: JSON.stringify({ branch, year, section, semester, updates: timetableData })
         });
         const result = await response.json();
         if (result.success) {
@@ -1606,16 +1606,28 @@ function markAttendance() {
     if (!isBluetoothSupported) {
         const statusElement = document.getElementById('attendance-status');
         if (statusElement) {
-            statusElement.textContent = 'Bluetooth not supported on this device.';
-            statusElement.className = 'text-red-600 font-medium';
+            statusElement.innerHTML = `
+                <div class="text-red-600 font-medium">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Bluetooth not supported on this device
+                </div>
+                <div class="text-sm text-gray-600 mt-2">
+                    Please use a device with Bluetooth capabilities and Chrome browser.
+                </div>
+            `;
         }
         return;
     }
     
     const statusElement = document.getElementById('attendance-status');
     if (statusElement) {
-        statusElement.textContent = 'Sending attendance signal...';
-        statusElement.className = 'text-yellow-600 font-medium';
+        statusElement.innerHTML = `
+            <div class="text-yellow-600 font-medium">
+                <i class="fas fa-bluetooth mr-2"></i>Sending attendance signal...
+            </div>
+            <div class="text-sm text-gray-600 mt-2">
+                Broadcasting your attendance signal to faculty system...
+            </div>
+        `;
     }
     
     // Use the new Bluetooth system - STUDENTS JUST SEND SIGNALS, NO SCANNING
@@ -1636,9 +1648,22 @@ function markAttendance() {
             
             // Start checking for faculty confirmation
             checkForFacultyConfirmation();
+        }).catch(error => {
+            // Show error message
+            if (statusElement) {
+                statusElement.innerHTML = `
+                    <div class="text-red-600 font-medium">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>Signal failed to send
+                    </div>
+                    <div class="text-sm text-gray-600 mt-2">
+                        Error: ${error.message}. Please try again.
+                    </div>
+                `;
+            }
         });
     } else {
         // Fallback to legacy system
+        console.warn('Bluetooth system not available, using fallback');
         findActiveSessionForStudent();
     }
 }
@@ -1662,7 +1687,7 @@ function checkForFacultyConfirmation() {
                                 <i class="fas fa-check-circle mr-2"></i>Attendance Confirmed!
                             </div>
                             <div class="text-sm text-gray-600 mt-2">
-                                Faculty: ${data.attendance.facultyName || 'Unknown'} | 
+                                Faculty: ${data.attendance.facultyName || 'Unknown Faculty'} | 
                                 Time: ${new Date(data.attendance.timestamp).toLocaleTimeString()}
                             </div>
                         `;
