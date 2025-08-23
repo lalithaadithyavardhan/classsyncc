@@ -1620,11 +1620,76 @@ function markAttendance() {
     
     // Use the new Bluetooth system - STUDENTS JUST SEND SIGNALS, NO SCANNING
     if (window.bluetoothSystem) {
-        window.bluetoothSystem.markStudentAttendance();
+        // Send attendance signal and wait for faculty confirmation
+        window.bluetoothSystem.markStudentAttendance().then(() => {
+            // Show waiting message
+            if (statusElement) {
+                statusElement.innerHTML = `
+                    <div class="text-blue-600 font-medium">
+                        <i class="fas fa-clock mr-2"></i>Signal sent! Waiting for faculty confirmation...
+                    </div>
+                    <div class="text-sm text-gray-600 mt-2">
+                        Your attendance signal has been broadcast. Faculty will detect it automatically.
+                    </div>
+                `;
+            }
+            
+            // Start checking for faculty confirmation
+            checkForFacultyConfirmation();
+        });
     } else {
         // Fallback to legacy system
         findActiveSessionForStudent();
     }
+}
+
+// Check for faculty confirmation of attendance
+function checkForFacultyConfirmation() {
+    const checkInterval = setInterval(() => {
+        // Check if attendance was marked by faculty
+        const studentRoll = localStorage.getItem('currentUserId') || 'S101';
+        const today = new Date().toISOString().split('T')[0];
+        
+        fetch(`/api/student/attendance/status?roll=${studentRoll}&date=${today}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.attendance) {
+                    // Attendance confirmed! Show success message
+                    const statusElement = document.getElementById('attendance-status');
+                    if (statusElement) {
+                        statusElement.innerHTML = `
+                            <div class="text-green-600 font-medium">
+                                <i class="fas fa-check-circle mr-2"></i>Attendance Confirmed!
+                            </div>
+                            <div class="text-sm text-gray-600 mt-2">
+                                Faculty: ${data.attendance.facultyName || 'Unknown'} | 
+                                Time: ${new Date(data.attendance.timestamp).toLocaleTimeString()}
+                            </div>
+                        `;
+                    }
+                    clearInterval(checkInterval);
+                }
+            })
+            .catch(error => {
+                console.error('Error checking attendance status:', error);
+            });
+    }, 3000); // Check every 3 seconds
+    
+    // Stop checking after 2 minutes
+    setTimeout(() => {
+        clearInterval(checkInterval);
+        const statusElement = document.getElementById('attendance-status');
+        if (statusElement) {
+            statusElement.innerHTML = `
+                <div class="text-yellow-600 font-medium">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>No confirmation received
+                </div>
+                <div class="text-sm text-gray-600 mt-2">
+                    Please contact your faculty if attendance was not marked.
+                </div>
+            `;
+        }
+    }, 120000);
 }
 
 // Find active session for current student
@@ -2130,6 +2195,15 @@ async function startEnhancedAttendanceSession() {
             `;
             }
             
+            // Start Bluetooth scanning
+            if (window.bluetoothSystem) {
+                window.bluetoothSystem.currentSession = { id: currentSessionId };
+                window.bluetoothSystem.startAttendanceSession();
+                console.log('Bluetooth system started for session:', currentSessionId);
+            } else {
+                console.warn('Bluetooth system not available');
+            }
+            
             // Start WebSocket scanning
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'FACULTY_SCAN_START' }));
@@ -2167,6 +2241,12 @@ function stopEnhancedAttendanceSession() {
                 Bluetooth scanning has been stopped
         </div>
     `;
+    }
+    
+    // Stop Bluetooth scanning
+    if (window.bluetoothSystem) {
+        window.bluetoothSystem.stopAttendanceSession();
+        console.log('Bluetooth system stopped');
     }
     
     // Stop WebSocket scanning

@@ -566,6 +566,272 @@ app.get('/api/faculty/attendance/sessions/:facultyId', async (req, res) => {
   }
 });
 
+// Get student attendance status for a specific date
+app.get('/api/student/attendance/status', async (req, res) => {
+  try {
+    const { roll, date } = req.query;
+    
+    if (!roll || !date) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Roll number and date are required' 
+      });
+    }
+    
+    // Find attendance records for this student on this date
+    const attendance = await Attendance.findOne({ 
+      studentRoll: roll, 
+      date: date 
+    }).populate('sessionId', 'facultyId').populate('facultyId', 'name');
+    
+    if (attendance) {
+      res.json({
+        success: true,
+        attendance: {
+          ...attendance.toObject(),
+          facultyName: attendance.facultyId?.name || 'Unknown Faculty'
+        }
+      });
+    } else {
+      res.json({
+        success: true,
+        attendance: null
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error fetching student attendance status:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch attendance status' 
+    });
+  }
+});
+
+// ========================================================
+//                  ADMIN TIMETABLE ENDPOINTS
+// ========================================================
+
+// Get timetable for admin editing
+app.get('/api/admin/timetable', async (req, res) => {
+  try {
+    const { branch, year, section, semester } = req.query;
+    
+    if (!branch || !year || !section) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Branch, year, and section are required' 
+      });
+    }
+    
+    const filter = { branch, year, section };
+    if (semester) filter.semester = semester;
+    
+    const timetable = await Timetable.find(filter).sort({ day: 1, startTime: 1 });
+    
+    res.json({ 
+      success: true, 
+      timetable 
+    });
+    
+  } catch (error) {
+    console.error('Error fetching admin timetable:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch timetable' 
+    });
+  }
+});
+
+// Bulk update timetable for admin
+app.post('/api/admin/timetable/bulk-update', async (req, res) => {
+  try {
+    const { branch, year, section, semester, updates } = req.body;
+    
+    if (!branch || !year || !section || !updates || !Array.isArray(updates)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid request data' 
+      });
+    }
+    
+    const filter = { branch, year, section };
+    if (semester) filter.semester = semester;
+    
+    // Delete existing timetable entries
+    await Timetable.deleteMany(filter);
+    
+    // Insert new entries
+    const newEntries = updates.map(update => ({
+      ...update,
+      branch,
+      year,
+      section,
+      semester: semester || null
+    }));
+    
+    const result = await Timetable.insertMany(newEntries);
+    
+    res.json({ 
+      success: true, 
+      message: `Timetable updated successfully. ${result.length} entries created.`,
+      count: result.length
+    });
+    
+  } catch (error) {
+    console.error('Error updating admin timetable:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update timetable' 
+    });
+  }
+});
+
+// ========================================================
+//                  ADMIN USER MANAGEMENT
+// ========================================================
+
+// Get all users for admin
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const users = await User.find({}).select('-password');
+    res.json({ success: true, users });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch users' 
+    });
+  }
+});
+
+// Create new user
+app.post('/api/admin/users', async (req, res) => {
+  try {
+    const { name, email, role, department, roll, password } = req.body;
+    
+    if (!name || !email || !role || !roll || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'All fields are required' 
+      });
+    }
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ 
+      $or: [{ email }, { roll }] 
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'User with this email or roll number already exists' 
+      });
+    }
+    
+    // Create new user
+    const user = new User({
+      name,
+      email,
+      role,
+      department,
+      roll,
+      password: await bcrypt.hash(password, 10)
+    });
+    
+    await user.save();
+    
+    res.json({ 
+      success: true, 
+      message: 'User created successfully',
+      user: { ...user.toObject(), password: undefined }
+    });
+    
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create user' 
+    });
+  }
+});
+
+// Update user
+app.put('/api/admin/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, email, role, department, roll, password } = req.body;
+    
+    if (!name || !email || !role || !roll) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name, email, role, and roll are required' 
+      });
+    }
+    
+    const updateData = { name, email, role, department, roll };
+    
+    // Only update password if provided
+    if (password && password.trim()) {
+      updateData.password = await bcrypt.hash(password, 10);
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      userId, 
+      updateData, 
+      { new: true }
+    ).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'User updated successfully',
+      user
+    });
+    
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update user' 
+    });
+  }
+});
+
+// Delete user
+app.delete('/api/admin/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findByIdAndDelete(userId);
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'User deleted successfully' 
+    });
+    
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete user' 
+    });
+  }
+});
+
 // ========================================================
 //                  SERVER INITIALIZATION
 // ========================================================
