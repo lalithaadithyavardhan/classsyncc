@@ -56,6 +56,7 @@ const upload = multer({ storage: storage });
 let activeBluetoothSession = null;
 let connectedClients = new Map();
 let discoveredDevices = new Map();
+let currentAttendanceSession = null; // Track current faculty attendance session
 
 // Helper function
 function todayStr() {
@@ -140,39 +141,67 @@ async function handleAttendanceRequest(clientId, data) {
             });
         }
         
-        // Simple attendance marking - no session restrictions
-        const today = todayStr();
-        
-        // Check if attendance already marked today
-        const alreadyMarked = await Attendance.findOne({ studentRoll: roll, date: today });
-        if (alreadyMarked) {
+        // Check if there's an active faculty attendance session
+        if (!currentAttendanceSession) {
             return sendToClient(clientId, {
                 type: 'ATTENDANCE_RESPONSE',
                 success: false,
-                message: 'Attendance already marked for today.'
+                message: 'No active attendance session. Please wait for faculty to start.'
             });
         }
-
-        // Create new attendance record
-        await Attendance.create({
-            studentRoll: roll,
-            date: today,
-            status: 'Present (Bluetooth)',
+        
+        // Check if student belongs to the class being marked
+        if (student.branch !== currentAttendanceSession.branch || 
+            student.year !== currentAttendanceSession.year || 
+            student.section !== currentAttendanceSession.section) {
+            return sendToClient(clientId, {
+                type: 'ATTENDANCE_RESPONSE',
+                success: false,
+                message: 'You are not enrolled in this class.'
+            });
+        }
+        
+        // Check if attendance already marked for this session
+        const existingRecord = currentAttendanceSession.attendanceRecords.find(
+            record => record.roll === roll
+        );
+        
+        if (existingRecord) {
+            return sendToClient(clientId, {
+                type: 'ATTENDANCE_RESPONSE',
+                success: false,
+                message: 'Attendance already marked for this session.'
+            });
+        }
+        
+        // Add to session attendance records
+        const attendanceRecord = {
+            roll,
             deviceId,
             rssi: discoveredDevice.rssi,
             timestamp: new Date(),
-            branch: student.branch,
-            year: student.year,
-            section: student.section
+            period: period || 1 // Default to period 1 if not specified
+        };
+        
+        currentAttendanceSession.attendanceRecords.push(attendanceRecord);
+        
+        // Also add to discovered devices for faculty view
+        discoveredDevices.set(deviceId, {
+            deviceId,
+            deviceName: 'Student Device',
+            rssi: discoveredDevice.rssi,
+            roll,
+            timestamp: Date.now(),
+            clientId
         });
-
+        
         sendToClient(clientId, {
             type: 'ATTENDANCE_RESPONSE',
             success: true,
             message: 'Attendance marked successfully!'
         });
         
-        // Notify faculty if they're scanning
+        // Notify faculty about new attendance
         if (activeBluetoothSession && activeBluetoothSession.facultyClientId) {
             const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
             if (facultyWs) {
@@ -180,7 +209,9 @@ async function handleAttendanceRequest(clientId, data) {
                     type: 'ATTENDANCE_MARKED',
                     roll,
                     deviceId,
-                    rssi: discoveredDevice.rssi
+                    rssi: discoveredDevice.rssi,
+                    period: attendanceRecord.period,
+                    subject: currentAttendanceSession.subject
                 }));
             }
         }
@@ -200,21 +231,21 @@ function handleFacultyScanStart(clientId) {
         facultyClientId: clientId,
         startTime: Date.now()
     };
-  discoveredDevices.clear();
+    discoveredDevices.clear();
     sendToClient(clientId, {
         type: 'SCAN_STARTED',
         message: 'Bluetooth scanning started...'
     });
-  console.log('Faculty started Bluetooth scanning');
+    console.log('Faculty started Bluetooth scanning');
 }
 
 function handleFacultyScanStop(clientId) {
-  activeBluetoothSession = null;
+    activeBluetoothSession = null;
     sendToClient(clientId, {
         type: 'SCAN_STOPPED',
         message: 'Bluetooth scanning stopped.'
     });
-  console.log('Faculty stopped Bluetooth scanning');
+    console.log('Faculty stopped Bluetooth scanning');
 }
 
 function sendToClient(clientId, message) {
@@ -1020,6 +1051,192 @@ app.post('/api/faculty/attendance/mark', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Failed to mark attendance' 
+    });
+  }
+});
+
+// Start faculty attendance session with subject and class info
+app.post('/api/faculty/attendance/start-session', async (req, res) => {
+  try {
+    const { subject, branch, year, section, periods, date, facultyId } = req.body;
+    
+    if (!subject || !branch || !year || !section || !periods || !date || !facultyId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'All fields are required: subject, branch, year, section, periods, date, facultyId' 
+      });
+    }
+    
+    // Clear any existing session
+    if (currentAttendanceSession) {
+      currentAttendanceSession = null;
+    }
+    
+    // Create new session
+    currentAttendanceSession = {
+      subject,
+      branch,
+      year,
+      section,
+      periods: Array.isArray(periods) ? periods : [periods],
+      date,
+      facultyId,
+      startTime: new Date(),
+      discoveredDevices: new Map(),
+      attendanceRecords: []
+    };
+    
+    // Clear discovered devices
+    discoveredDevices.clear();
+    
+    res.json({ 
+      success: true, 
+      message: 'Attendance session started successfully',
+      session: currentAttendanceSession
+    });
+    
+  } catch (error) {
+    console.error('Error starting attendance session:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to start attendance session' 
+    });
+  }
+});
+
+// Stop faculty attendance session and get final records
+app.post('/api/faculty/attendance/stop-session', async (req, res) => {
+  try {
+    if (!currentAttendanceSession) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No active attendance session' 
+      });
+    }
+    
+    // Mark session as paused (not completed yet)
+    currentAttendanceSession.endTime = new Date();
+    currentAttendanceSession.status = 'paused';
+    
+    // Get collected attendance records (but don't save yet)
+    const records = Array.from(currentAttendanceSession.attendanceRecords.values());
+    
+    const sessionData = { ...currentAttendanceSession };
+    
+    res.json({ 
+      success: true, 
+      message: 'Attendance session stopped successfully',
+      session: sessionData,
+      records: records,
+      totalRecords: records.length
+    });
+    
+  } catch (error) {
+    console.error('Error stopping attendance session:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to stop attendance session' 
+    });
+  }
+});
+
+// Submit attendance records manually
+app.post('/api/faculty/attendance/submit', async (req, res) => {
+  try {
+    if (!currentAttendanceSession) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No attendance session to submit' 
+      });
+    }
+    
+    // Mark session as completed
+    currentAttendanceSession.endTime = new Date();
+    currentAttendanceSession.status = 'completed';
+    
+    // Get final attendance records
+    const finalRecords = Array.from(currentAttendanceSession.attendanceRecords.values());
+    
+    if (finalRecords.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No attendance records to submit' 
+      });
+    }
+    
+    // Save attendance records to database
+    const savedRecords = [];
+    for (const record of finalRecords) {
+      try {
+        const attendance = await Attendance.create({
+          studentRoll: record.roll,
+          date: currentAttendanceSession.date,
+          status: 'Present (Bluetooth)',
+          subject: currentAttendanceSession.subject,
+          period: record.period,
+          method: 'bluetooth',
+          deviceId: record.deviceId,
+          rssi: record.rssi,
+          timestamp: record.timestamp,
+          branch: currentAttendanceSession.branch,
+          year: currentAttendanceSession.year,
+          section: currentAttendanceSession.section,
+          facultyId: currentAttendanceSession.facultyId
+        });
+        savedRecords.push(attendance);
+      } catch (error) {
+        console.error('Error saving attendance record:', error);
+      }
+    }
+    
+    const sessionData = { ...currentAttendanceSession };
+    currentAttendanceSession = null;
+    
+    res.json({ 
+      success: true, 
+      message: 'Attendance submitted successfully',
+      session: sessionData,
+      savedRecords: savedRecords,
+      totalRecords: savedRecords.length,
+      subject: sessionData.subject,
+      date: sessionData.date
+    });
+    
+  } catch (error) {
+    console.error('Error submitting attendance:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to submit attendance' 
+    });
+  }
+});
+
+// Get current attendance session status
+app.get('/api/faculty/attendance/session-status', async (req, res) => {
+  try {
+    if (!currentAttendanceSession) {
+      return res.json({ 
+        success: true, 
+        active: false,
+        message: 'No active session' 
+      });
+    }
+    
+    const records = Array.from(currentAttendanceSession.attendanceRecords.values());
+    
+    res.json({ 
+      success: true, 
+      active: true,
+      session: currentAttendanceSession,
+      totalRecords: records.length,
+      records: records
+    });
+    
+  } catch (error) {
+    console.error('Error getting session status:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to get session status' 
     });
   }
 });

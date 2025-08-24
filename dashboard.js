@@ -132,7 +132,7 @@ function loadAttendanceContent() {
         content.innerHTML = `
             <div>
                 <div class="mb-6">
-                    <h3 class="text-xl font-bold mb-4">Enhanced Attendance System</h3>
+                    <h3 class="text-xl font-bold mb-4">Faculty Attendance Management</h3>
                     <div class="bg-white p-6 rounded-lg shadow-md mb-6">
                         <h4 class="font-semibold mb-4 text-gray-800">Select Class & Periods</h4>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -153,46 +153,65 @@ function loadAttendanceContent() {
                                     ${[1,2,3,4,5,6,7].map(p => `
                                         <label class="flex items-center">
                                             <input type="checkbox" value="${p}" class="mr-1">
-                                            <span class="text-sm">Period ${p}</span>
+                                            <span class="text-sm">${p}</span>
                                         </label>
                                     `).join('')}
                                 </div>
                             </div>
                         </div>
-                        <button onclick="loadClassStudents()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
-                            <i class="fas fa-search mr-2"></i>Show Students
-                        </button>
-                    </div>
-                    <div id="session-controls" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
-                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Session</h4>
-                        <div class="flex gap-4 mb-4">
-                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"><i class="fas fa-play mr-2"></i>Start Listening for Student Signals</button>
-                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"><i class="fas fa-stop mr-2"></i>Stop Listening</button>
-                        </div>
-                        <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg"></div>
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
-                        <div id="students-list" class="space-y-2 max-h-96 overflow-y-auto">
-                            <p class="text-gray-500 text-center py-8">Select a class to view students</p>
+                        <div class="flex gap-2">
+                            <button onclick="loadFacultyClasses()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                <i class="fas fa-sync mr-2"></i>Load Classes
+                            </button>
+                            <button onclick="showStudentsForAttendance()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                                <i class="fas fa-users mr-2"></i>Show Students
+                            </button>
                         </div>
                     </div>
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h4 class="font-semibold mb-4 text-gray-800">Detected Student Signals</h4>
-                        <div id="discovered-devices-list" class="space-y-2 max-h-96 overflow-y-auto">
-                            <p class="text-gray-500 text-center py-8">No student signals detected yet</p>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Session Control</h4>
+                        <div class="flex gap-2 mb-4">
+                            <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                                <i class="fas fa-play mr-2"></i>Start Listening for Student Signals
+                            </button>
+                            <button onclick="stopAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">
+                                <i class="fas fa-stop mr-2"></i>Stop Listening
+                            </button>
+                            <button id="submit-attendance-btn" onclick="submitAttendance()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium hidden">
+                                <i class="fas fa-save mr-2"></i>Submit Attendance
+                            </button>
+                        </div>
+                        <div id="bluetooth-status" class="p-3 rounded-lg bg-gray-50">
+                            <p class="text-gray-600">Ready to start attendance session</p>
                         </div>
                     </div>
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Records</h4>
-                        <div id="attendance-records" class="space-y-2 max-h-96 overflow-y-auto">
-                            <p class="text-gray-500 text-center py-8">No attendance records yet</p>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
+                            <div id="class-students" class="space-y-2">
+                                <p class="text-gray-500">Select a class to see students</p>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h4 class="font-semibold mb-4 text-gray-800">Detected Student Signals</h4>
+                            <div id="detected-signals" class="space-y-2">
+                                <p class="text-gray-500">No student signals detected yet</p>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h4 class="font-semibold mb-4 text-gray-800">Attendance Records</h4>
+                            <div id="attendance-records" class="space-y-2">
+                                <p class="text-gray-500">No attendance records yet</p>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>`;
+        
         loadFacultyClasses();
     } else if (currentRole === 'admin') {
         // Inject the final admin UI with multi-selects and date range
@@ -505,12 +524,32 @@ function initWebSocket() {
         console.log('WebSocket connected');
     };
     
-    ws.onmessage = (event) => {
+    ws.onmessage = function(event) {
         try {
             const data = JSON.parse(event.data);
-            handleWebSocketMessage(data);
+            console.log('WebSocket message received:', data);
+            
+            switch (data.type) {
+                case 'DEVICE_FOUND':
+                    handleDeviceFound(data.device);
+                    break;
+                case 'ATTENDANCE_MARKED':
+                    handleAttendanceMarked(data);
+                    break;
+                case 'SCAN_STARTED':
+                    handleScanStarted(data);
+                    break;
+                case 'SCAN_STOPPED':
+                    handleScanStopped(data);
+                    break;
+                case 'ATTENDANCE_RESPONSE':
+                    handleAttendanceResponse(data);
+                    break;
+                default:
+                    console.log('Unknown message type:', data.type);
+            }
         } catch (error) {
-            console.error('WebSocket message error:', error);
+            console.error('Error parsing WebSocket message:', error);
         }
     };
     
@@ -549,58 +588,73 @@ function handleWebSocketMessage(data) {
 
 // Handle attendance response
 function handleAttendanceResponse(data) {
+    console.log('Attendance response:', data);
     const statusElement = document.getElementById('attendance-status');
     if (statusElement) {
         if (data.success) {
-            statusElement.textContent = data.message;
-            statusElement.className = 'text-green-600 font-medium';
-            loadStudentAttendance(currentUser.roll);
-        } else {
-            statusElement.textContent = data.message;
-            statusElement.className = 'text-red-600 font-medium';
-        }
-    }
-}
-
-// Handle device found (faculty)
-function handleDeviceFound(data) {
-    console.log('Device found:', data);
-    const { device } = data;
-    
-    // Add to discovered devices list (legacy interface)
-    addDiscoveredDevice(device);
-    
-    // If we have an active session, try to mark attendance automatically
-    if (currentSessionId && device.roll) {
-        // Find which period this device belongs to (you might need to implement this logic)
-        const period = currentPeriods[0]; // Default to first period for now
-        
-        // Mark attendance for this student
-        markStudentAttendance(device.roll, period);
-        
-        // Update the bluetooth status
-        const statusElement = document.getElementById('bluetooth-status');
-        if (statusElement) {
-            const currentContent = statusElement.innerHTML;
             statusElement.innerHTML = `
-                ${currentContent}
-                <div class="text-sm text-green-600 mt-2">
-                    <i class="fas fa-check mr-1"></i>Device detected: ${device.deviceName || device.deviceId} (${device.roll})
+                <div class="text-green-600 font-medium">
+                    <i class="fas fa-check-circle mr-2"></i>${data.message}
+                </div>
+                <div class="text-sm text-gray-600 mt-2">
+                    Your attendance has been recorded successfully!
+                </div>
+            `;
+        } else {
+            statusElement.innerHTML = `
+                <div class="text-red-600 font-medium">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>${data.message}
+                </div>
+                <div class="text-sm text-gray-600 mt-2">
+                    Please try again or contact your faculty.
                 </div>
             `;
         }
     }
 }
 
+// Handle device found (faculty)
+function handleDeviceFound(device) {
+    console.log('Device found:', device);
+    // This will be handled by the faculty UI updates
+}
+
 // Handle attendance marked (faculty)
 function handleAttendanceMarked(data) {
-    const { roll, deviceId } = data;
+    console.log('Attendance marked:', data);
+    // This will be handled by the faculty UI updates
+}
+
+// Handle scan started (faculty)
+function handleScanStarted(data) {
+    console.log('Scan started:', data);
     const statusElement = document.getElementById('bluetooth-status');
     if (statusElement) {
-        statusElement.textContent = `Attendance marked for ${roll} (${deviceId})`;
-        statusElement.className = 'text-green-600 font-medium';
+        statusElement.innerHTML = `
+            <div class="text-green-600 font-medium">
+                <i class="fas fa-bluetooth mr-2"></i>${data.message || 'Bluetooth scanning started...'}
+            </div>
+            <div class="text-sm text-gray-600 mt-2">
+                <i class="fas fa-spinner fa-spin mr-1"></i>Listening for student devices...
+            </div>
+        `;
     }
-    loadFacultyAttendance();
+}
+
+// Handle scan stopped (faculty)
+function handleScanStopped(data) {
+    console.log('Scan stopped:', data);
+    const statusElement = document.getElementById('bluetooth-status');
+    if (statusElement) {
+        statusElement.innerHTML = `
+            <div class="text-red-600 font-medium">
+                <i class="fas fa-stop mr-2"></i>${data.message || 'Bluetooth scanning stopped.'}
+            </div>
+            <div class="text-sm text-gray-600 mt-2">
+                Scanning has been stopped.
+            </div>
+        `;
+    }
 }
 
 // Show dashboard after login
@@ -1040,7 +1094,7 @@ function handleScanStopped(data) {
                 <i class="fas fa-stop mr-2"></i>${data.message || 'Bluetooth scanning stopped.'}
             </div>
             <div class="text-sm text-gray-600 mt-2">
-                Scanning has been stopped
+                Scanning has been stopped.
             </div>
         `;
     }
@@ -1905,328 +1959,16 @@ async function loadFacultyClasses() {
 }
 
 // Load students for selected class
-async function loadClassStudents() {
-    const classId = document.getElementById('class-select').value;
-    const date = document.getElementById('attendance-date').value;
-    const selectedPeriods = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => parseInt(cb.value));
-    
-    console.log('Loading students for class:', { classId, date, selectedPeriods });
-    
-    if (!classId) {
-        alert('Please select a class');
-        return;
-    }
-    
-    if (selectedPeriods.length === 0) {
-        alert('Please select at least one period');
-        return;
-    }
-    
-    try {
-        const response = await fetch(`/api/faculty/class/${classId}/students`);
-        const data = await response.json();
-        
-        console.log('Class students response:', data);
-        
-        if (data.success) {
-            currentClassData = data.classData;
-            currentPeriods = selectedPeriods;
-            
-            // Display students
-            const studentsList = document.getElementById('students-list');
-            if (!studentsList) {
-                console.error('Students list element not found');
-                return;
-            }
-            
-            studentsList.innerHTML = `
-                <div class="mb-4 p-3 bg-blue-50 rounded-lg">
-                    <h5 class="font-semibold text-blue-800">${data.classData.subject} - ${data.classData.section}</h5>
-                    <p class="text-sm text-blue-600">Date: ${date} | Periods: ${selectedPeriods.join(', ')}</p>
-                    <p class="text-sm text-blue-600">Students: ${data.students.length}</p>
-                </div>
-            `;
-            
-            if (data.students.length === 0) {
-                studentsList.innerHTML += `
-                    <div class="text-center py-8 text-gray-500">
-                        <p>No students found for this class.</p>
-                        <p class="text-sm">Check if students are properly enrolled in ${data.classData.branch} ${data.classData.year} ${data.classData.section}</p>
-                    </div>
-                `;
-            } else {
-            data.students.forEach((student, index) => {
-                const studentDiv = document.createElement('div');
-                studentDiv.className = 'p-3 border border-gray-200 rounded-lg flex justify-between items-center';
-                studentDiv.innerHTML = `
-                    <div>
-                        <span class="font-medium">${index + 1}.</span>
-                        <span class="font-medium">${student.name}</span>
-                        <span class="text-sm text-gray-500">(${student.roll})</span>
-                    </div>
-                    <div class="flex gap-2">
-                        ${selectedPeriods.map(period => `
-                            <button onclick="markStudentAttendance('${student.roll}', ${period})" 
-                                    class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 attendance-btn" 
-                                    data-student="${student.roll}" data-period="${period}">
-                                Period ${period}
-                            </button>
-                        `).join('')}
-                    </div>
-                `;
-                studentsList.appendChild(studentDiv);
-            });
-            }
-            
-            // Show session controls
-            const sessionControls = document.getElementById('session-controls');
-            if (sessionControls) {
-                sessionControls.classList.remove('hidden');
-            }
-            
-        } else {
-            console.error('Failed to load class students:', data);
-            alert(data.error || 'Error loading students');
-        }
-    } catch (error) {
-        console.error('Error loading class students:', error);
-        alert('Network error loading students');
-    }
-}
+// Function removed - using new simplified system
 
-// Mark attendance for a student
-async function markStudentAttendance(studentRoll, period) {
-    if (!currentSessionId) {
-        alert('Please start an attendance session first');
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/faculty/attendance/mark', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                sessionId: currentSessionId,
-                studentRoll,
-                period,
-                method: 'manual'
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Update button appearance
-            const btn = document.querySelector(`[data-student="${studentRoll}"][data-period="${period}"]`);
-            if (btn) {
-                btn.classList.remove('bg-green-100', 'text-green-700', 'hover:bg-green-200');
-                btn.classList.add('bg-green-500', 'text-white');
-                btn.textContent = '✓ Present';
-                btn.disabled = true;
-            }
-            
-            // Update attendance records
-            updateAttendanceRecords();
-        } else {
-            alert(data.message);
-        }
-    } catch (error) {
-        console.error('Error marking attendance:', error);
-        alert('Error marking attendance');
-    }
-}
+// Mark attendance function removed - using new simplified system
 
 // Start enhanced attendance session
-async function startEnhancedAttendanceSession() {
-    if (!currentClassData || currentPeriods.length === 0) {
-        alert('Please select a class and periods first');
-        return;
-    }
-    
-    const date = document.getElementById('attendance-date').value;
-    
-    console.log('Starting attendance session:', {
-        classData: currentClassData,
-        periods: currentPeriods,
-        date: date
-    });
-    
-    try {
-        const facultyId = (currentUser && currentUser.roll) || 'F101';
-        const response = await fetch('/api/faculty/attendance/session', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                classId: currentClassData._id,
-                date,
-                periods: currentPeriods,
-                facultyId
-            })
-        });
-        
-        const data = await response.json();
-        
-        console.log('Start session response:', data);
-        
-        if (data.success) {
-            currentSessionId = data.sessionId;
-            
-            // Update UI
-            const bluetoothStatus = document.getElementById('bluetooth-status');
-            if (bluetoothStatus) {
-                bluetoothStatus.innerHTML = `
-                <div class="text-green-600 font-medium">
-                    <i class="fas fa-bluetooth mr-2"></i>Session Active - Scanning for devices...
-                </div>
-                <div class="text-sm text-gray-600 mt-2">
-                    Class: ${currentClassData.subject} | Periods: ${currentPeriods.join(', ')} | Date: ${date}
-                </div>
-                    <div class="text-sm text-blue-600 mt-2">
-                        Session ID: ${currentSessionId}
-                </div>
-            `;
-            }
-            
-            // Start Bluetooth scanning
-            if (window.bluetoothSystem) {
-                window.bluetoothSystem.currentSession = { id: currentSessionId };
-                window.bluetoothSystem.startAttendanceSession();
-                console.log('Bluetooth system started for session:', currentSessionId);
-            } else {
-                console.warn('Bluetooth system not available');
-            }
-            
-            // Start WebSocket scanning
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'FACULTY_SCAN_START' }));
-                console.log('Sent FACULTY_SCAN_START to WebSocket');
-            } else {
-                console.warn('WebSocket not connected, cannot start scanning');
-            }
-            
-            // Update attendance records
-            updateAttendanceRecords();
-            
-        } else {
-            alert(data.message || 'Failed to start attendance session');
-        }
-    } catch (error) {
-        console.error('Error starting attendance session:', error);
-        alert('Network error starting attendance session');
-    }
-}
+// Enhanced attendance session function removed - using new simplified system
 
-// Stop enhanced attendance session
-function stopEnhancedAttendanceSession() {
-    console.log('Stopping attendance session:', currentSessionId);
-    
-    currentSessionId = null;
-    
-    // Update UI
-    const bluetoothStatus = document.getElementById('bluetooth-status');
-    if (bluetoothStatus) {
-        bluetoothStatus.innerHTML = `
-        <div class="text-red-600 font-medium">
-            <i class="fas fa-stop mr-2"></i>Session Stopped
-        </div>
-            <div class="text-sm text-gray-600 mt-2">
-                Bluetooth scanning has been stopped
-        </div>
-    `;
-    }
-    
-    // Stop Bluetooth scanning
-    if (window.bluetoothSystem) {
-        window.bluetoothSystem.stopAttendanceSession();
-        console.log('Bluetooth system stopped');
-    }
-    
-    // Stop WebSocket scanning
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'FACULTY_SCAN_STOP' }));
-        console.log('Sent FACULTY_SCAN_STOP to WebSocket');
-    } else {
-        console.warn('WebSocket not connected, cannot stop scanning');
-    }
-    
-    // Clear attendance records
-    const recordsDiv = document.getElementById('attendance-records');
-    if (recordsDiv) {
-        recordsDiv.innerHTML = '<p class="text-gray-500 text-center py-8">No attendance records yet</p>';
-    }
-}
+// Enhanced attendance session stop function removed - using new simplified system
 
-// Update attendance records display
-async function updateAttendanceRecords() {
-    if (!currentSessionId) {
-        console.log('No active session, skipping attendance records update');
-        return;
-    }
-    
-    console.log('Updating attendance records for session:', currentSessionId);
-    
-    try {
-        const response = await fetch(`/api/faculty/attendance/session/${currentSessionId}`);
-        const data = await response.json();
-        
-        console.log('Attendance records response:', data);
-        
-        if (data.success) {
-            const recordsDiv = document.getElementById('attendance-records');
-            if (!recordsDiv) {
-                console.error('Attendance records element not found');
-                return;
-            }
-            
-            if (!data.session.attendanceRecords || data.session.attendanceRecords.length === 0) {
-                recordsDiv.innerHTML = '<p class="text-gray-500 text-center py-8">No attendance records yet</p>';
-                return;
-            }
-            
-            recordsDiv.innerHTML = `
-                <div class="mb-4 p-3 bg-green-50 rounded-lg">
-                    <h5 class="font-semibold text-green-800">Attendance Records</h5>
-                    <p class="text-sm text-green-600">Total: ${data.session.attendanceRecords.length} records</p>
-                </div>
-            `;
-            
-            data.session.attendanceRecords.forEach((record, index) => {
-                const recordDiv = document.createElement('div');
-                recordDiv.className = 'p-3 border border-gray-200 rounded-lg mb-2';
-                recordDiv.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <div>
-                    <strong>Student:</strong> ${record.studentRoll} | 
-                    <strong>Period:</strong> ${record.period} | 
-                            <strong>Status:</strong> <span class="text-green-600">${record.status}</span> | 
-                    <strong>Method:</strong> ${record.method}
-                        </div>
-                        <div class="text-xs text-gray-500">
-                            ${new Date(record.timestamp).toLocaleTimeString()}
-                        </div>
-                    </div>
-                `;
-                recordsDiv.appendChild(recordDiv);
-            });
-        } else {
-            console.error('Failed to fetch attendance records:', data);
-            const recordsDiv = document.getElementById('attendance-records');
-            if (recordsDiv) {
-                recordsDiv.innerHTML = '<p class="text-red-500 text-center py-8">Error loading attendance records</p>';
-            }
-        }
-    } catch (error) {
-        console.error('Error updating attendance records:', error);
-        const recordsDiv = document.getElementById('attendance-records');
-        if (recordsDiv) {
-            recordsDiv.innerHTML = '<p class="text-red-500 text-center py-8">Network error loading records</p>';
-        }
-    }
-}
+// Update attendance records function removed - using new simplified system
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -2282,9 +2024,382 @@ function markSimpleAttendance() {
                 ws.send(JSON.stringify({
                     type: 'ATTENDANCE_REQUEST',
                     roll: studentRoll,
-                    deviceId: 'student-device-001'
+                    deviceId: 'student-device-001',
+                    period: 1 // Default period
                 }));
             }, 1000);
         }
     }, 2000);
+}
+
+// Show students for attendance marking
+async function showStudentsForAttendance() {
+    const classSelect = document.getElementById('class-select');
+    if (!classSelect || !classSelect.value) {
+        alert('Please select a class first');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/faculty/class/${classSelect.value}/students`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const studentsDiv = document.getElementById('class-students');
+            if (studentsDiv) {
+                studentsDiv.innerHTML = `
+                    <div class="bg-blue-50 p-3 rounded-lg mb-3">
+                        <h5 class="font-medium text-blue-800">${data.classData.subject} - ${data.classData.branch}${data.classData.year}${data.classData.section}</h5>
+                        <p class="text-sm text-blue-600">Students: ${data.students.length}</p>
+                    </div>
+                    <div class="max-h-64 overflow-y-auto space-y-2">
+                        ${data.students.map((student, index) => `
+                            <div class="flex items-center justify-between p-2 border rounded-lg">
+                                <span class="text-sm">${index + 1}. ${student.name} (${student.roll})</span>
+                                <span class="text-xs text-gray-500">Period ${getSelectedPeriods().join(', ')}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+        } else {
+            alert('Failed to load students: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error loading students:', error);
+        alert('Error loading students');
+    }
+}
+
+// Get selected periods
+function getSelectedPeriods() {
+    const periodCheckboxes = document.querySelectorAll('input[type="checkbox"]:checked');
+    return Array.from(periodCheckboxes).map(cb => parseInt(cb.value));
+}
+
+// Start attendance session
+async function startAttendanceSession() {
+    const classSelect = document.getElementById('class-select');
+    const dateInput = document.getElementById('attendance-date');
+    const periods = getSelectedPeriods();
+    
+    if (!classSelect.value) {
+        alert('Please select a class first');
+        return;
+    }
+    
+    if (periods.length === 0) {
+        alert('Please select at least one period');
+        return;
+    }
+    
+    try {
+        // Parse class info from the selected option
+        const classText = classSelect.options[classSelect.selectedIndex].text;
+        const match = classText.match(/(.+) => (.+), (\d+) - (.+) (.+)/);
+        
+        if (!match) {
+            alert('Invalid class format');
+            return;
+        }
+        
+        const [, subject, branch, year, semester, section] = match;
+        const facultyId = currentUser?.roll || 'F101';
+        
+        const response = await fetch('/api/faculty/attendance/start-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                subject,
+                branch,
+                year: parseInt(year),
+                section,
+                periods,
+                date: dateInput.value,
+                facultyId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update UI
+            const statusElement = document.getElementById('bluetooth-status');
+            if (statusElement) {
+                statusElement.innerHTML = `
+                    <div class="text-green-600 font-medium">
+                        <i class="fas fa-bluetooth mr-2"></i>Session Active - Listening for student signals
+                    </div>
+                    <div class="text-sm text-gray-600 mt-2">
+                        Subject: ${subject} | Periods: ${periods.join(', ')} | Date: ${dateInput.value}
+                    </div>
+                `;
+            }
+            
+            // Start WebSocket scanning
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'FACULTY_SCAN_START' }));
+            }
+            
+            // Start periodic updates
+            startAttendanceUpdates();
+            
+            // Hide submit button (new session started)
+            const submitBtn = document.getElementById('submit-attendance-btn');
+            if (submitBtn) {
+                submitBtn.classList.add('hidden');
+            }
+            
+        } else {
+            alert('Failed to start session: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error starting session:', error);
+        alert('Error starting attendance session');
+    }
+}
+
+// Stop attendance session
+async function stopAttendanceSession() {
+    try {
+        const response = await fetch('/api/faculty/attendance/stop-session', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update UI
+            const statusElement = document.getElementById('bluetooth-status');
+            if (statusElement) {
+                statusElement.innerHTML = `
+                    <div class="text-orange-600 font-medium">
+                        <i class="fas fa-pause mr-2"></i>Session Stopped - Ready to Submit
+                    </div>
+                    <div class="text-sm text-gray-600 mt-2">
+                        Attendance records collected: ${data.totalRecords} | Subject: ${data.session.subject} | Date: ${data.session.date}
+                    </div>
+                    <div class="text-sm text-blue-600 mt-2">
+                        Click "Submit Attendance" to save records to database
+                    </div>
+                `;
+            }
+            
+            // Stop WebSocket scanning
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'FACULTY_SCAN_STOP' }));
+            }
+            
+            // Stop periodic updates
+            stopAttendanceUpdates();
+            
+            // Show submit button
+            const submitBtn = document.getElementById('submit-attendance-btn');
+            if (submitBtn) {
+                submitBtn.classList.remove('hidden');
+            }
+            
+            // Show collected attendance records (but not saved yet)
+            showCollectedAttendanceRecords(data.records);
+            
+        } else {
+            alert('Failed to stop session: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error stopping session:', error);
+        alert('Error stopping attendance session');
+    }
+}
+
+// Start periodic attendance updates
+let attendanceUpdateInterval = null;
+
+function startAttendanceUpdates() {
+    if (attendanceUpdateInterval) {
+        clearInterval(attendanceUpdateInterval);
+    }
+    
+    attendanceUpdateInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/api/faculty/attendance/session-status');
+            const data = await response.json();
+            
+            if (data.success && data.active) {
+                updateDetectedSignals(data.records);
+                updateAttendanceRecords(data.records);
+            }
+        } catch (error) {
+            console.error('Error updating attendance:', error);
+        }
+    }, 2000); // Update every 2 seconds
+}
+
+// Stop periodic attendance updates
+function stopAttendanceUpdates() {
+    if (attendanceUpdateInterval) {
+        clearInterval(attendanceUpdateInterval);
+        attendanceUpdateInterval = null;
+    }
+}
+
+// Update detected signals display
+function updateDetectedSignals(records) {
+    const signalsDiv = document.getElementById('detected-signals');
+    if (signalsDiv) {
+        if (records.length === 0) {
+            signalsDiv.innerHTML = '<p class="text-gray-500">No student signals detected yet</p>';
+        } else {
+            signalsDiv.innerHTML = records.map(record => `
+                <div class="p-2 border rounded-lg">
+                    <div class="text-sm font-medium">Student Device</div>
+                    <div class="text-xs text-gray-600">ID: ${record.deviceId}</div>
+                    <div class="text-xs text-gray-600">Signal: ${record.rssi} dBm</div>
+                    <div class="text-xs text-gray-600">Roll: ${record.roll}</div>
+                </div>
+            `).join('');
+        }
+    }
+}
+
+// Update attendance records display
+function updateAttendanceRecords(records) {
+    const recordsDiv = document.getElementById('attendance-records');
+    if (recordsDiv) {
+        if (records.length === 0) {
+            recordsDiv.innerHTML = '<p class="text-gray-500">No attendance records yet</p>';
+        } else {
+            recordsDiv.innerHTML = records.map(record => `
+                <div class="p-2 border rounded-lg bg-green-50">
+                    <div class="text-sm font-medium text-green-800">✓ Present</div>
+                    <div class="text-xs text-gray-600">Roll: ${record.roll}</div>
+                    <div class="text-xs text-gray-600">Period: ${record.period}</div>
+                    <div class="text-xs text-gray-600">Time: ${new Date(record.timestamp).toLocaleTimeString()}</div>
+                </div>
+            `).join('');
+        }
+    }
+}
+
+// Show final attendance records after session ends
+function showFinalAttendanceRecords(records) {
+    const recordsDiv = document.getElementById('attendance-records');
+    if (recordsDiv) {
+        if (records.length === 0) {
+            recordsDiv.innerHTML = '<p class="text-gray-500">No attendance records for this session</p>';
+        } else {
+            recordsDiv.innerHTML = `
+                <div class="mb-3 p-3 bg-green-100 rounded-lg">
+                    <h5 class="font-medium text-green-800">Session Complete!</h5>
+                    <p class="text-sm text-green-600">Total attendance: ${records.length} students</p>
+                </div>
+                ${records.map(record => `
+                    <div class="p-2 border rounded-lg bg-green-50">
+                        <div class="text-sm font-medium text-green-800">✓ ${record.studentRoll}</div>
+                        <div class="text-xs text-gray-600">Period: ${record.period}</div>
+                        <div class="text-xs text-gray-600">Subject: ${record.subject}</div>
+                        <div class="text-xs text-gray-600">Time: ${new Date(record.timestamp).toLocaleTimeString()}</div>
+                    </div>
+                `).join('')}
+            `;
+        }
+    }
+}
+
+// Submit attendance records manually
+async function submitAttendance() {
+    try {
+        const submitBtn = document.getElementById('submit-attendance-btn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+        }
+        
+        const response = await fetch('/api/faculty/attendance/submit', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Show success message
+            const statusElement = document.getElementById('bluetooth-status');
+            if (statusElement) {
+                statusElement.innerHTML = `
+                    <div class="text-green-600 font-medium">
+                        <i class="fas fa-check-circle mr-2"></i>Attendance Submitted Successfully!
+                    </div>
+                    <div class="text-sm text-gray-600 mt-2">
+                        Total records saved: ${data.totalRecords} | Subject: ${data.subject} | Date: ${data.date}
+                    </div>
+                    <div class="text-sm text-blue-600 mt-2">
+                        Students can now view their updated attendance in their dashboard.
+                    </div>
+                `;
+            }
+            
+            // Hide submit button
+            if (submitBtn) {
+                submitBtn.classList.add('hidden');
+            }
+            
+            // Show final attendance records
+            if (data.savedRecords) {
+                showFinalAttendanceRecords(data.savedRecords);
+            }
+            
+            // Refresh student attendance data
+            setTimeout(() => {
+                if (currentUser && currentRole === 'faculty') {
+                    // Trigger a refresh of student attendance data
+                    console.log('Attendance submitted successfully, student data will be updated');
+                }
+            }, 1000);
+            
+        } else {
+            alert('Failed to submit attendance: ' + data.message);
+            
+            // Re-enable submit button
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i>Submit Attendance';
+            }
+        }
+    } catch (error) {
+        console.error('Error submitting attendance:', error);
+        alert('Network error submitting attendance');
+        
+        // Re-enable submit button
+        const submitBtn = document.getElementById('submit-attendance-btn');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i>Submit Attendance';
+        }
+    }
+}
+
+// Show collected attendance records (before submission)
+function showCollectedAttendanceRecords(records) {
+    const recordsDiv = document.getElementById('attendance-records');
+    if (recordsDiv) {
+        if (records.length === 0) {
+            recordsDiv.innerHTML = '<p class="text-gray-500">No attendance records collected in this session</p>';
+        } else {
+            recordsDiv.innerHTML = `
+                <div class="mb-3 p-3 bg-orange-100 rounded-lg">
+                    <h5 class="font-medium text-orange-800">Session Records (Not Saved Yet)</h5>
+                    <p class="text-sm text-orange-600">Total collected: ${records.length} students</p>
+                    <p class="text-xs text-orange-500">Click "Submit Attendance" to save these records</p>
+                </div>
+                ${records.map(record => `
+                    <div class="p-2 border rounded-lg bg-orange-50">
+                        <div class="text-sm font-medium text-orange-800">✓ ${record.roll}</div>
+                        <div class="text-xs text-gray-600">Period: ${record.period}</div>
+                        <div class="text-xs text-gray-600">Time: ${new Date(record.timestamp).toLocaleTimeString()}</div>
+                    </div>
+                `).join('')}
+            `;
+        }
+    }
 }
