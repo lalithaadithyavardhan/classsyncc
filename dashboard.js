@@ -89,13 +89,44 @@ function showSection(section) {
 function loadAttendanceContent() {
     // Support both containers: legacy #attendanceContent and new #attendanceSection
     const content = document.getElementById('attendanceContent') || document.getElementById('attendanceSection');
-    if (!content) return;
+    
+    if (!content) {
+        console.error('No attendance content container found!');
+        return;
+    }
     
     // Clear before rendering
     content.innerHTML = '';
     
     if (currentRole === 'student') {
-        content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
+        content.innerHTML = `
+            <div id="student-attendance-summary" class="mb-8">
+                <div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center">
+                    <h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3>
+                    <p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p>
+                    <p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p>
+                </div>
+                <h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3>
+                <div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <p class="text-gray-500">Loading...</p>
+                </div>
+            </div>
+            <hr class="my-8">
+            <div class="text-center">
+                <h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3>
+                <div class="mb-4 p-4 bg-blue-50 rounded-lg border-l-4 border-blue-400">
+                    <p class="text-sm text-blue-800">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        <strong>How it works:</strong> Click the button below to mark your attendance. 
+                        The system will send a Bluetooth signal to the faculty system for automatic attendance recording.
+                    </p>
+                </div>
+                <button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
+                    <i class="fas fa-bluetooth mr-2"></i>Mark Attendance
+                </button>
+                <div id="attendance-status" class="mt-4 p-3 rounded-lg"></div>
+            </div>`;
+        
         loadStudentAttendanceSummary(currentUser.roll);
     } else if (currentRole === 'faculty') {
         content.innerHTML = `
@@ -741,20 +772,7 @@ async function loadStudentDashboardClasses() {
     }
 }
 
-// Helper: get today's subjects for current student (for attendance summary filtering)
-async function getTodaysSubjectsForStudent() {
-    try {
-        const { branch, year, section } = currentUser || {};
-        if (!branch || !year || !section) return [];
-        const resp = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}`);
-        const data = await resp.json();
-        if (!data.success) return [];
-        const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-        const todays = (data.timetable || []).filter(e => e.day === currentDay);
-        const subjects = [...new Set(todays.map(e => e.subject).filter(Boolean))];
-        return subjects;
-    } catch (_) { return []; }
-}
+// Helper function removed - no longer needed for simplified attendance system
 
 // Load faculty dashboard classes
 async function loadFacultyDashboardClasses() {
@@ -1195,107 +1213,7 @@ async function changePassword() {
 }
 
 
-// Load attendance content
-function loadAttendanceContent() {
-    // Support both containers: legacy #attendanceContent and new #attendanceSection
-    const content = document.getElementById('attendanceContent') || document.getElementById('attendanceSection');
-    if (!content) return;
-    
-    // Clear before rendering
-    content.innerHTML = '';
-    
-    if (currentRole === 'student') {
-        content.innerHTML = `<div id="student-attendance-summary" class="mb-8"><div class="bg-white rounded-xl shadow-md p-6 mb-6 text-center"><h3 class="text-lg font-medium text-gray-500">Overall Attendance</h3><p id="overall-percentage" class="text-5xl font-bold text-indigo-600 my-2">--%</p><p id="overall-details" class="text-gray-600">Attended -- out of -- classes</p></div><h3 class="text-xl font-bold mb-4">Subject-wise Attendance</h3><div id="subject-wise-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"><p class="text-gray-500">Loading...</p></div></div><hr class="my-8"><div class="text-center"><h3 class="text-xl font-bold mb-4">Mark Your Attendance</h3><button onclick="markAttendance()" class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"><i class="fas fa-bluetooth mr-2"></i>Mark Attendance</button><div id="attendance-status" class="mt-4 p-3 rounded-lg"></div></div>`;
-        loadStudentAttendanceSummary(currentUser.roll);
-    } else if (currentRole === 'faculty') {
-        content.innerHTML = `
-            <div>
-                <div class="mb-6">
-                    <h3 class="text-xl font-bold mb-4">Enhanced Attendance System</h3>
-                    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-                        <h4 class="font-semibold mb-4 text-gray-800">Select Class & Periods</h4>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Date:</label>
-                                <input type="date" id="attendance-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" value="${new Date().toISOString().split('T')[0]}">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Subject:</label>
-                                <select id="class-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                    <option value="">Select Subject</option>
-                                </select>
-                                <p id="class-select-helper" class="text-xs text-gray-500 mt-1">Filtered by faculty mapping (branch/year/section/semester)</p>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Periods:</label>
-                                <div class="flex flex-wrap gap-2">
-                                    ${[1,2,3,4,5,6,7].map(p => `
-                                        <label class="flex items-center">
-                                            <input type="checkbox" value="${p}" class="mr-1">
-                                            <span class="text-sm">Period ${p}</span>
-                                        </label>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        </div>
-                        <button onclick="loadClassStudents()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
-                            <i class="fas fa-search mr-2"></i>Show Students
-                        </button>
-                    </div>
-                    <div id="session-controls" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
-                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Session</h4>
-                        <div class="flex gap-4 mb-4">
-                            <button onclick="startEnhancedAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"><i class="fas fa-play mr-2"></i>Start Listening for Student Signals</button>
-                            <button onclick="stopEnhancedAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"><i class="fas fa-stop mr-2"></i>Stop Listening</button>
-                        </div>
-                        <div id="bluetooth-status" class="p-3 bg-gray-100 rounded-lg"></div>
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
-                        <div id="students-list" class="space-y-2 max-h-96 overflow-y-auto">
-                            <p class="text-gray-500 text-center py-8">Select a class to view students</p>
-                        </div>
-                    </div>
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h4 class="font-semibold mb-4 text-gray-800">Detected Student Signals</h4>
-                        <div id="discovered-devices-list" class="space-y-2 max-h-96 overflow-y-auto">
-                            <p class="text-gray-500 text-center py-8">No student signals detected yet</p>
-                        </div>
-                    </div>
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Records</h4>
-                        <div id="attendance-records" class="space-y-2 max-h-96 overflow-y-auto">
-                            <p class="text-gray-500 text-center py-8">No attendance records yet</p>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-        loadFacultyClasses();
-    } else if (currentRole === 'admin') {
-        // Inject the final admin UI with multi-selects and date range
-        content.innerHTML = `
-            <div class="bg-white rounded-xl shadow-md p-6">
-                <div class="gradient-bg p-4 text-white -m-6 mb-6 rounded-t-xl"><h2 class="text-xl font-bold">Daily Attendance Summary</h2></div>
-                <div class="p-4 bg-gray-50 rounded-lg border">
-                    <div class="grid grid-cols-1 md:grid-cols-6 gap-x-6 gap-y-4">
-                        <div><label class="block text-sm font-medium">Branch</label><select id="admin-branch-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
-                        <div><label class="block text-sm font-medium">Year</label><select id="admin-year-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
-                        <div><label class="block text-sm font-medium">Section</label><select id="admin-section-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
-                        <div><label class="block text-sm font-medium">Semester</label><select id="admin-semester-select" multiple class="mt-1 block w-full py-2 px-3 border rounded-md"></select></div>
-                        <div><label class="block text-sm font-medium">Date</label><input type="date" id="admin-date-select" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
-                        <div class="hidden md:block"></div>
-                        <div><label class="block text-sm font-medium">From</label><input type="date" id="admin-from-date" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
-                        <div><label class="block text-sm font-medium">To</label><input type="date" id="admin-to-date" class="mt-1 block w-full py-2 px-3 border rounded-md"></div>
-                    </div>
-                    <div class="mt-4 pt-4 border-t"><div class="flex justify-between items-center"><div class="flex items-center"><label class="block text-sm font-medium mr-4">Periods:</label><div id="admin-periods-checkboxes" class="flex flex-wrap gap-x-6 gap-y-2"></div></div><button id="admin-view-btn" class="px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700"><i class="fas fa-eye mr-2"></i>View</button></div></div>
-                </div>
-                <div id="summary-output-section" class="mt-6 hidden"></div>
-            </div>`;
-        initializeAdminAttendanceDashboard();
-    }
-}
+// Duplicate function removed - using the improved version above
 
 // Load timetable content
 function loadTimetableContent() {
@@ -1597,9 +1515,7 @@ function loadNotificationsContent() {
 
 // Enhanced Student Attendance Functions
 
-// Global variables for student attendance
-let currentStudentSessionId = null;
-let currentStudentPeriod = null;
+// Simplified attendance system - no session restrictions
 
 // Student attendance function - enhanced to work with sessions
 function markAttendance() {
@@ -1662,9 +1578,9 @@ function markAttendance() {
             }
         });
     } else {
-        // Fallback to legacy system
-        console.warn('Bluetooth system not available, using fallback');
-        findActiveSessionForStudent();
+        // Fallback to simple attendance marking
+        console.warn('Bluetooth system not available, using simple attendance marking');
+        markSimpleAttendance();
     }
 }
 
@@ -1717,104 +1633,11 @@ function checkForFacultyConfirmation() {
     }, 120000);
 }
 
-// Find active session for current student
-async function findActiveSessionForStudent() {
-    try {
-        const studentRoll = localStorage.getItem('currentUserId') || 'S101';
-        const today = new Date().toISOString().split('T')[0];
-        
-        // Get active sessions for today
-        const response = await fetch(`/api/faculty/attendance/sessions/F101?date=${today}`);
-        const data = await response.json();
-        
-        if (data.success && data.sessions.length > 0) {
-            // Find a session where this student is enrolled
-            for (const session of data.sessions) {
-                const classData = await fetch(`/api/faculty/class/${session.classId}/students`);
-                const classResponse = await classResponse.json();
-                
-                if (classResponse.success) {
-                    const isEnrolled = classResponse.students.some(student => student.roll === studentRoll);
-                    if (isEnrolled) {
-                        currentStudentSessionId = session._id;
-                        currentStudentPeriod = session.periods[0]; // Use first period for now
-                        markAttendanceForSession(studentRoll);
-                        return;
-                    }
-                }
-            }
-        }
-        
-        // Fallback to legacy system if no session found
-        markAttendanceLegacy();
-        
-    } catch (error) {
-        console.error('Error finding active session:', error);
-        markAttendanceLegacy();
-    }
-}
+// Simplified attendance system - no timetable restrictions for marking attendance
 
-// Mark attendance for specific session
-function markAttendanceForSession(studentRoll) {
-    const statusElement = document.getElementById('attendance-status');
-    if (statusElement) {
-        statusElement.textContent = 'Marking attendance for active session...';
-        statusElement.className = 'text-blue-600 font-medium';
-    }
-    
-    // Simulate Bluetooth attendance marking with session
-    setTimeout(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'BLUETOOTH_DEVICE_DISCOVERED',
-                deviceId: 'student-device-001',
-                deviceName: 'Student Device',
-                rssi: -65 + Math.random() * 20,
-                roll: studentRoll
-            }));
-            
-            setTimeout(() => {
-                ws.send(JSON.stringify({
-                    type: 'ATTENDANCE_REQUEST',
-                    roll: studentRoll,
-                    deviceId: 'student-device-001',
-                    sessionId: currentStudentSessionId,
-                    period: currentStudentPeriod
-                }));
-            }, 1000);
-        }
-    }, 2000);
-}
+// Session-based attendance function removed - using simplified system
 
-// Legacy attendance function (fallback)
-function markAttendanceLegacy() {
-    const statusElement = document.getElementById('attendance-status');
-    if (statusElement) {
-        statusElement.textContent = 'No active session found, using legacy system...';
-        statusElement.className = 'text-yellow-600 font-medium';
-    }
-    
-    // Simulate Bluetooth attendance marking (legacy)
-    setTimeout(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'BLUETOOTH_DEVICE_DISCOVERED',
-                deviceId: 'student-device-001',
-                deviceName: 'Student Device',
-                rssi: -65 + Math.random() * 20,
-                roll: 'S101'
-            }));
-            
-            setTimeout(() => {
-                ws.send(JSON.stringify({
-                    type: 'ATTENDANCE_REQUEST',
-                    roll: 'S101',
-                    deviceId: 'student-device-001'
-                }));
-            }, 1000);
-        }
-    }, 2000);
-}
+// Legacy attendance function removed - now using improved session-based system
 
 function startAttendanceSession() {
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1890,28 +1713,76 @@ async function loadStudentAttendanceSummary(roll) {
     try {
         const response = await fetch(`/api/student/attendance/summary/${roll}`);
         const data = await response.json();
+        
         if (data.success) {
-            document.getElementById('overall-percentage').textContent = `${data.overall.percentage}%`;
-            document.getElementById('overall-details').textContent = `Attended ${data.overall.attended} of ${data.overall.total} classes`;
-            const subjectListDiv = document.getElementById('subject-wise-list');
-            subjectListDiv.innerHTML = '';
-            // Only include subjects from today's timetable for this student to ensure relevance
-            const todaysSubjects = await getTodaysSubjectsForStudent();
-            const subjectsToShow = todaysSubjects.length ? todaysSubjects : Object.keys(data.subjectWise || {});
-            if (!subjectsToShow.length) {
-                subjectListDiv.innerHTML = `<p class="text-gray-500">No subjects found for today.</p>`;
-                return;
+            // Update overall attendance
+            const overallPercentageEl = document.getElementById('overall-percentage');
+            const overallDetailsEl = document.getElementById('overall-details');
+            
+            if (overallPercentageEl && overallDetailsEl) {
+                overallPercentageEl.textContent = `${data.overall.percentage}%`;
+                overallDetailsEl.textContent = `Attended ${data.overall.attended} of ${data.overall.total} classes`;
             }
-            for (const subject of subjectsToShow) {
-                const stats = data.subjectWise[subject] || { attended: 0, total: 0, percentage: 0 };
-                const card = document.createElement('div');
-                card.className = 'bg-white rounded-lg shadow p-4';
-                card.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold">${subject}</span><span>${stats.attended}/${stats.total}</span></div><div class="w-full bg-gray-200 rounded-full h-2.5 mt-2"><div class="bg-indigo-600 h-2.5 rounded-full" style="width: ${stats.percentage}%"></div></div><p class="text-right text-lg font-semibold mt-1">${stats.percentage}%</p>`;
-                subjectListDiv.appendChild(card);
+            
+            // Update subject-wise attendance
+            const subjectListDiv = document.getElementById('subject-wise-list');
+            if (subjectListDiv) {
+                subjectListDiv.innerHTML = '';
+                
+                // Check if we have subject-wise data
+                if (data.subjectWise && Object.keys(data.subjectWise).length > 0) {
+                    // Show all subjects from the attendance data
+                    for (const subject of Object.keys(data.subjectWise)) {
+                        const stats = data.subjectWise[subject];
+                        const card = document.createElement('div');
+                        card.className = 'bg-white rounded-lg shadow p-4';
+                        card.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold">${subject}</span>
+                                <span>${stats.attended}/${stats.total}</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                                <div class="bg-indigo-600 h-2.5 rounded-full" style="width: ${stats.percentage}%"></div>
+                            </div>
+                            <p class="text-right text-lg font-semibold mt-1">${stats.percentage}%</p>
+                        `;
+                        subjectListDiv.appendChild(card);
+                    }
+                } else {
+                    // No subject-wise data, show general attendance
+                    subjectListDiv.innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            <p>No attendance data available yet.</p>
+                            <p class="text-sm">Mark your first attendance to see statistics.</p>
+                        </div>
+                    `;
+                }
+            }
+        } else {
+            console.error('Failed to load attendance summary:', data.message);
+            // Show error message
+            const subjectListDiv = document.getElementById('subject-wise-list');
+            if (subjectListDiv) {
+                subjectListDiv.innerHTML = `
+                    <div class="text-center py-8 text-red-500">
+                        <p>Failed to load attendance data.</p>
+                        <p class="text-sm">${data.message || 'Please try again later.'}</p>
+                    </div>
+                `;
             }
         }
     } catch (error) { 
-        console.error("Failed to load summary:", error); 
+        console.error("Failed to load summary:", error);
+        // Show error message
+        const subjectListDiv = document.getElementById('subject-wise-list');
+        if (subjectListDiv) {
+            subjectListDiv.innerHTML = `
+                <div class="text-center py-8 text-red-500">
+                    <p>Error loading attendance data.</p>
+                    <p class="text-sm">Please check your connection and try again.</p>
+                </div>
+            `;
+        }
     }
 }
 
@@ -2379,3 +2250,41 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 }); 
+
+// Simple attendance marking function - no timetable restrictions
+function markSimpleAttendance() {
+    const statusElement = document.getElementById('attendance-status');
+    if (statusElement) {
+        statusElement.innerHTML = `
+            <div class="text-blue-600 font-medium">
+                <i class="fas fa-check-circle mr-2"></i>Marking attendance...
+            </div>
+            <div class="text-sm text-gray-600 mt-2">
+                Sending attendance signal to faculty system...
+            </div>
+        `;
+    }
+    
+    // Simulate Bluetooth attendance marking
+    setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            const studentRoll = currentUser?.roll || localStorage.getItem('currentUserId') || 'S101';
+            
+            ws.send(JSON.stringify({
+                type: 'BLUETOOTH_DEVICE_DISCOVERED',
+                deviceId: 'student-device-001',
+                deviceName: 'Student Device',
+                rssi: -65 + Math.random() * 20,
+                roll: studentRoll
+            }));
+            
+            setTimeout(() => {
+                ws.send(JSON.stringify({
+                    type: 'ATTENDANCE_REQUEST',
+                    roll: studentRoll,
+                    deviceId: 'student-device-001'
+                }));
+            }, 1000);
+        }
+    }, 2000);
+}

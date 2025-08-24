@@ -140,114 +140,51 @@ async function handleAttendanceRequest(clientId, data) {
             });
         }
         
-        // If sessionId is provided, use new attendance system
-        if (sessionId) {
-            const session = await AttendanceSession.findById(sessionId);
-            if (!session) {
-                return sendToClient(clientId, {
-                    type: 'ATTENDANCE_RESPONSE',
-                    success: false,
-                    message: 'Attendance session not found.'
-                });
-            }
-
-            const classData = await Class.findById(session.classId);
-            const studentDoc = await User.findOne({ roll: roll });
-            const isEnrolled = !!studentDoc && studentDoc.branch === classData.branch && studentDoc.year === classData.year && studentDoc.section === classData.section;
-
-            if (!isEnrolled) {
-                return sendToClient(clientId, {
-                    type: 'ATTENDANCE_RESPONSE',
-                    success: false,
-                    message: 'Student not enrolled in this class.'
-                });
-            }
-
-            const existingRecord = session.attendanceRecords.find(
-                record => record.studentRoll === roll && record.period === period
-            );
-            
-            if (existingRecord) {
-                return sendToClient(clientId, {
-                    type: 'ATTENDANCE_RESPONSE',
-                    success: false,
-                    message: 'Attendance already marked for this period.'
-                });
-            }
-
-            session.attendanceRecords.push({
-                studentRoll: roll,
-                period,
-                status: 'present',
-                method: 'bluetooth',
-                deviceId,
-                rssi: discoveredDevice.rssi
-            });
-            await session.save();
-            
-            const facultyWs = connectedClients.get(activeBluetoothSession?.facultyClientId);
-            if (facultyWs) {
-                facultyWs.send(JSON.stringify({ 
-                    type: 'ATTENDANCE_MARKED', 
-                    roll, 
-                    deviceId,
-                    rssi: discoveredDevice.rssi,
-                    period,
-                    sessionId
-                }));
-            }
-            
-            sendToClient(clientId, {
+        // Simple attendance marking - no session restrictions
+        const today = todayStr();
+        
+        // Check if attendance already marked today
+        const alreadyMarked = await Attendance.findOne({ studentRoll: roll, date: today });
+        if (alreadyMarked) {
+            return sendToClient(clientId, {
                 type: 'ATTENDANCE_RESPONSE',
-                success: true,
-                message: 'Attendance marked successfully!'
+                success: false,
+                message: 'Attendance already marked for today.'
             });
-        } else {
-            // Legacy attendance system
-            if (!activeBluetoothSession) {
-                return sendToClient(clientId, {
-                    type: 'ATTENDANCE_RESPONSE',
-                    success: false,
-                    message: 'No active attendance session.'
-                });
-            }
+        }
 
-            const alreadyMarked = await Attendance.findOne({ roll, date: todayStr() });
-            if (alreadyMarked) {
-                return sendToClient(clientId, {
-                    type: 'ATTENDANCE_RESPONSE',
-                    success: false,
-                    message: 'Attendance already marked.'
-                });
-            }
+        // Create new attendance record
+        await Attendance.create({
+            studentRoll: roll,
+            date: today,
+            status: 'Present (Bluetooth)',
+            deviceId,
+            rssi: discoveredDevice.rssi,
+            timestamp: new Date(),
+            branch: student.branch,
+            year: student.year,
+            section: student.section
+        });
 
-            await Attendance.create({
-                roll,
-                date: todayStr(),
-                status: 'Present (Bluetooth)',
-                deviceId,
-                rssi: discoveredDevice.rssi,
-                timestamp: new Date(),
-                branch: student.branch,
-                year: student.year,
-                section: student.section
-            });
-
-            sendToClient(clientId, {
-                type: 'ATTENDANCE_RESPONSE',
-                success: true,
-                message: 'Attendance marked successfully!'
-            });
-            
+        sendToClient(clientId, {
+            type: 'ATTENDANCE_RESPONSE',
+            success: true,
+            message: 'Attendance marked successfully!'
+        });
+        
+        // Notify faculty if they're scanning
+        if (activeBluetoothSession && activeBluetoothSession.facultyClientId) {
             const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
             if (facultyWs) {
                 facultyWs.send(JSON.stringify({
                     type: 'ATTENDANCE_MARKED',
                     roll,
-                    deviceId
+                    deviceId,
+                    rssi: discoveredDevice.rssi
                 }));
             }
         }
+        
     } catch (error) {
         console.error('Attendance request error:', error);
         sendToClient(clientId, {
@@ -347,6 +284,29 @@ app.get('/api/timetable/student', async (req, res) => {
         const timetable = await Timetable.find(filter);
         res.json({ success: true, timetable });
     } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// New endpoint for path-based student timetable access
+app.get('/api/timetable/student/:branch/:year/:section', async (req, res) => {
+    try {
+        const { branch, year, section } = req.params;
+        const { day, semester } = req.query;
+        
+        const filter = { 
+            branch, 
+            year: parseInt(year), 
+            section 
+        };
+        
+        if (semester) filter.semester = semester;
+        if (day) filter.day = day;
+
+        const timetable = await Timetable.find(filter).sort({ startTime: 1 });
+        res.json({ success: true, timetable });
+    } catch (err) {
+        console.error('Student timetable error:', err);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
@@ -566,6 +526,47 @@ app.get('/api/faculty/attendance/sessions/:facultyId', async (req, res) => {
   }
 });
 
+// Get active attendance sessions for students by class and period
+app.get('/api/faculty/attendance/sessions', async (req, res) => {
+  try {
+    const { date, classId, period } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Date is required' 
+      });
+    }
+    
+    const filter = { date, status: 'active' };
+    
+    // If classId is provided, find sessions for that specific class
+    if (classId) {
+      // Find classes that match the classId pattern (branch-year-section)
+      const [branch, year, section] = classId.split('-');
+      if (branch && year && section) {
+        const classes = await Class.find({ branch, year, section }).select('_id');
+        const classIds = classes.map(c => c._id);
+        filter.classId = { $in: classIds };
+      }
+    }
+    
+    // If period is provided, find sessions that include that period
+    if (period) {
+      filter.periods = parseInt(period);
+    }
+    
+    const sessions = await AttendanceSession.find(filter)
+      .populate('classId', 'branch year section')
+      .lean();
+    
+    res.json({ success: true, sessions });
+  } catch (err) {
+    console.error('List student sessions error:', err);
+    res.status(500).json({ success: false, message: 'Failed to list sessions' });
+  }
+});
+
 // Get student attendance status for a specific date
 app.get('/api/student/attendance/status', async (req, res) => {
   try {
@@ -604,6 +605,122 @@ app.get('/api/student/attendance/status', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch attendance status' 
+    });
+  }
+});
+
+// Get student attendance summary with overall and subject-wise statistics
+app.get('/api/student/attendance/summary/:roll', async (req, res) => {
+  try {
+    const { roll } = req.params;
+    
+    if (!roll) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Roll number is required' 
+      });
+    }
+    
+    // Get student information to find their class details
+    const student = await User.findOne({ roll, role: 'student' });
+    if (!student) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Student not found' 
+      });
+    }
+    
+    const { branch, year, section } = student;
+    
+    // Get student's timetable to know what subjects they should have
+    const timetable = await Timetable.find({ 
+      branch, 
+      year: parseInt(year), 
+      section 
+    });
+    
+    // Get all attendance records for this student
+    const attendanceRecords = await Attendance.find({ 
+      studentRoll: roll 
+    }).sort({ date: -1 });
+    
+    // Calculate overall statistics
+    const totalClasses = attendanceRecords.length;
+    const attendedClasses = attendanceRecords.filter(record => 
+      record.status && record.status.toLowerCase().includes('present')
+    ).length;
+    const overallPercentage = totalClasses > 0 ? Math.round((attendedClasses / totalClasses) * 100) : 0;
+    
+    // Calculate subject-wise statistics
+    const subjectWise = {};
+    
+    // Get unique subjects from timetable
+    const subjects = [...new Set(timetable.map(t => t.subject).filter(Boolean))];
+    
+    // If no subjects found in timetable, still show attendance data
+    if (subjects.length === 0) {
+      // Show attendance records without subject mapping
+      subjectWise['General Attendance'] = {
+        attended: attendedClasses,
+        total: totalClasses,
+        percentage: overallPercentage
+      };
+      
+      res.json({
+        success: true,
+        overall: {
+          attended: attendedClasses,
+          total: totalClasses,
+          percentage: overallPercentage
+        },
+        subjectWise,
+        message: 'No timetable data found, showing general attendance'
+      });
+      return;
+    }
+    
+    for (const subject of subjects) {
+      // Find attendance records for this subject by matching dates with timetable
+      const subjectAttendance = attendanceRecords.filter(record => {
+        // Find timetable entries for this subject
+        const subjectTimetableEntries = timetable.filter(t => t.subject === subject);
+        
+        // Check if the attendance date matches any of the subject's timetable dates
+        return subjectTimetableEntries.some(timetableEntry => {
+          // For now, we'll consider all attendance records as potentially related to this subject
+          // In a more sophisticated system, you might want to link attendance to specific subjects via session IDs
+          return true;
+        });
+      });
+      
+      const subjectTotal = subjectAttendance.length;
+      const subjectAttended = subjectAttendance.filter(record => 
+        record.status && record.status.toLowerCase().includes('present')
+      ).length;
+      const subjectPercentage = subjectTotal > 0 ? Math.round((subjectAttended / subjectTotal) * 100) : 0;
+      
+      subjectWise[subject] = {
+        attended: subjectAttended,
+        total: subjectTotal,
+        percentage: subjectPercentage
+      };
+    }
+    
+    res.json({
+      success: true,
+      overall: {
+        attended: attendedClasses,
+        total: totalClasses,
+        percentage: overallPercentage
+      },
+      subjectWise
+    });
+    
+  } catch (error) {
+    console.error('Error fetching student attendance summary:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch attendance summary' 
     });
   }
 });
