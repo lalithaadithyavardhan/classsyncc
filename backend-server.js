@@ -94,6 +94,9 @@ function handleWebSocketMessage(clientId, data) {
     case 'ATTENDANCE_REQUEST':
       handleAttendanceRequest(clientId, data);
       break;
+    case 'STUDENT_ATTENDANCE_SIGNAL':
+      handleStudentAttendanceSignal(clientId, data);
+      break;
     case 'FACULTY_SCAN_START':
       handleFacultyScanStart(clientId);
       break;
@@ -222,6 +225,125 @@ async function handleAttendanceRequest(clientId, data) {
             type: 'ATTENDANCE_RESPONSE',
             success: false,
             message: 'Database error.'
+        });
+    }
+}
+
+// Handle student attendance signals - ensures subject-specific attendance
+async function handleStudentAttendanceSignal(clientId, data) {
+    const { roll, name, deviceId, timestamp, subject } = data;
+    
+    try {
+        // Check if there's an active faculty attendance session
+        if (!currentAttendanceSession) {
+            return sendToClient(clientId, {
+                type: 'STUDENT_SIGNAL_RESPONSE',
+                success: false,
+                message: 'No active attendance session. Please wait for faculty to start.'
+            });
+        }
+        
+        // CRITICAL FIX: Check if student is trying to mark attendance for the correct subject
+        if (currentAttendanceSession.subject !== subject) {
+            return sendToClient(clientId, {
+                type: 'STUDENT_SIGNAL_RESPONSE',
+                success: false,
+                message: `Attendance session is for subject: ${currentAttendanceSession.subject}, not ${subject}. Please wait for the correct subject session.`
+            });
+        }
+        
+        // Check if student belongs to the class being marked
+        const student = await User.findOne({ roll });
+        if (!student) {
+            return sendToClient(clientId, {
+                type: 'STUDENT_SIGNAL_RESPONSE',
+                success: false,
+                message: 'Student not found.'
+            });
+        }
+        
+        if (student.branch !== currentAttendanceSession.branch || 
+            student.year !== currentAttendanceSession.year || 
+            student.section !== currentAttendanceSession.section) {
+            return sendToClient(clientId, {
+                type: 'STUDENT_SIGNAL_RESPONSE',
+                success: false,
+                message: 'You are not enrolled in this class.'
+            });
+        }
+        
+        // Check if attendance already marked for this session
+        const existingRecord = currentAttendanceSession.attendanceRecords.find(
+            record => record.roll === roll
+        );
+        
+        if (existingRecord) {
+            return sendToClient(clientId, {
+                type: 'STUDENT_SIGNAL_RESPONSE',
+                success: false,
+                message: 'Attendance already marked for this session.'
+            });
+        }
+        
+        // Add to session attendance records with subject information
+        const attendanceRecord = {
+            roll,
+            name,
+            deviceId,
+            rssi: -65, // Simulated signal strength
+            timestamp: new Date(timestamp),
+            period: currentAttendanceSession.periods?.[0] || 1, // Use first selected period
+            subject: currentAttendanceSession.subject
+        };
+        
+        currentAttendanceSession.attendanceRecords.push(attendanceRecord);
+        
+        // Add to discovered devices for faculty view with complete student info
+        discoveredDevices.set(deviceId, {
+            deviceId,
+            deviceName: `Student: ${name}`,
+            rssi: -65,
+            roll,
+            name,
+            timestamp: Date.now(),
+            clientId,
+            subject: currentAttendanceSession.subject
+        });
+        
+        // Send success response to student
+        sendToClient(clientId, {
+            type: 'STUDENT_SIGNAL_RESPONSE',
+            success: true,
+            message: `Attendance marked successfully for ${currentAttendanceSession.subject}!`,
+            subject: currentAttendanceSession.subject,
+            period: attendanceRecord.period
+        });
+        
+        // Notify faculty about new attendance with complete student information
+        if (activeBluetoothSession && activeBluetoothSession.facultyClientId) {
+            const facultyWs = connectedClients.get(activeBluetoothSession.facultyClientId);
+            if (facultyWs) {
+                facultyWs.send(JSON.stringify({
+                    type: 'ATTENDANCE_MARKED',
+                    roll,
+                    name,
+                    deviceId,
+                    rssi: -65,
+                    period: attendanceRecord.period,
+                    subject: currentAttendanceSession.subject,
+                    timestamp: attendanceRecord.timestamp
+                }));
+            }
+        }
+        
+        console.log(`Student ${roll} (${name}) marked attendance for ${currentAttendanceSession.subject}`);
+        
+    } catch (error) {
+        console.error('Student attendance signal error:', error);
+        sendToClient(clientId, {
+            type: 'STUDENT_SIGNAL_RESPONSE',
+            success: false,
+            message: 'Database error processing attendance signal.'
         });
     }
 }

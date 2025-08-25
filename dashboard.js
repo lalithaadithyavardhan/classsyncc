@@ -64,6 +64,11 @@ function showDashboard() {
     // Navigate to the main dashboard view
     showSection('dashboard');
     initMobileMenu();
+    
+    // Start session checking for students
+    if (currentRole === 'student') {
+        startSessionChecking();
+    }
 }
 
 function showSection(section) {
@@ -79,6 +84,14 @@ function showSection(section) {
     if (section === 'attendance') {
         loadAttendanceContent();
     }
+    
+    // Start session checking for students when viewing attendance
+    if (section === 'attendance' && currentRole === 'student') {
+        startSessionChecking();
+    } else if (currentRole === 'student') {
+        stopSessionChecking();
+    }
+    
     // Add other content loaders here if needed (e.g., for timetable)
 }
 
@@ -569,6 +582,9 @@ function handleWebSocketMessage(data) {
         case 'ATTENDANCE_RESPONSE':
             handleAttendanceResponse(data);
             break;
+        case 'STUDENT_SIGNAL_RESPONSE':
+            handleStudentSignalResponse(data);
+            break;
         case 'DEVICE_FOUND':
             handleDeviceFound(data);
             break;
@@ -654,6 +670,39 @@ function handleScanStopped(data) {
                 Scanning has been stopped.
             </div>
         `;
+    }
+}
+
+// Handle student signal response
+function handleStudentSignalResponse(data) {
+    console.log('Student signal response:', data);
+    const statusElement = document.getElementById('attendance-status');
+    if (statusElement) {
+        if (data.success) {
+            statusElement.innerHTML = `
+                <div class="text-green-600 font-medium">
+                    <i class="fas fa-check-circle mr-2"></i>${data.message}
+                </div>
+                <div class="text-sm text-gray-600 mt-2">
+                    Subject: ${data.subject || 'Unknown'} | Period: ${data.period || 'Unknown'}
+                </div>
+                <div class="text-sm text-blue-600 mt-2">
+                    <i class="fas fa-clock mr-1"></i>Waiting for faculty confirmation...
+                </div>
+            `;
+            
+            // Start checking for faculty confirmation
+            checkForFacultyConfirmation();
+        } else {
+            statusElement.innerHTML = `
+                <div class="text-red-600 font-medium">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>${data.message}
+                </div>
+                <div class="text-sm text-gray-600 mt-2">
+                    Please wait for the correct subject session or contact your faculty.
+                </div>
+            `;
+        }
     }
 }
 
@@ -1602,8 +1651,41 @@ function markAttendance() {
     
     // Use the new Bluetooth system - STUDENTS JUST SEND SIGNALS, NO SCANNING
     if (window.bluetoothSystem) {
-        // Send attendance signal and wait for faculty confirmation
-        window.bluetoothSystem.markStudentAttendance().then(() => {
+        // First check for active faculty session
+        window.bluetoothSystem.checkActiveSession().then(sessionInfo => {
+            if (!sessionInfo) {
+                // No active session
+                if (statusElement) {
+                    statusElement.innerHTML = `
+                        <div class="text-yellow-600 font-medium">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>No Active Faculty Session
+                        </div>
+                        <div class="text-sm text-gray-600 mt-2">
+                            Please wait for your faculty to start an attendance session.
+                        </div>
+                    `;
+                }
+                return;
+            }
+            
+            // Show session info
+            if (statusElement) {
+                statusElement.innerHTML = `
+                    <div class="text-blue-600 font-medium">
+                        <i class="fas fa-info-circle mr-2"></i>Active Session Found
+                    </div>
+                    <div class="text-sm text-gray-600 mt-2">
+                        Subject: ${sessionInfo.subject} | Class: ${sessionInfo.branch}${sessionInfo.year}${sessionInfo.section}
+                    </div>
+                    <div class="text-sm text-blue-600 mt-2">
+                        <i class="fas fa-spinner fa-spin mr-1"></i>Sending attendance signal...
+                    </div>
+                `;
+            }
+            
+            // Now send attendance signal
+            return window.bluetoothSystem.markStudentAttendance();
+        }).then(() => {
             // Show waiting message
             if (statusElement) {
                 statusElement.innerHTML = `
@@ -1642,7 +1724,7 @@ function markAttendance() {
 function checkForFacultyConfirmation() {
     const checkInterval = setInterval(() => {
         // Check if attendance was marked by faculty
-        const studentRoll = localStorage.getItem('currentUserId') || 'S101';
+        const studentRoll = localStorage.getItem('currentUserId') || currentUser?.roll || 'S101';
         const today = new Date().toISOString().split('T')[0];
         
         fetch(`/api/student/attendance/status?roll=${studentRoll}&date=${today}`)
@@ -1657,6 +1739,7 @@ function checkForFacultyConfirmation() {
                                 <i class="fas fa-check-circle mr-2"></i>Attendance Confirmed!
                             </div>
                             <div class="text-sm text-gray-600 mt-2">
+                                Subject: ${data.attendance.subject || 'Unknown'} | 
                                 Faculty: ${data.attendance.facultyName || 'Unknown Faculty'} | 
                                 Time: ${new Date(data.attendance.timestamp).toLocaleTimeString()}
                             </div>
@@ -1685,6 +1768,49 @@ function checkForFacultyConfirmation() {
             `;
         }
     }, 120000);
+}
+
+// Start periodic session checking for students
+let sessionCheckInterval = null;
+
+function startSessionChecking() {
+    if (sessionCheckInterval) {
+        clearInterval(sessionCheckInterval);
+    }
+    
+    sessionCheckInterval = setInterval(async () => {
+        if (currentRole === 'student' && window.bluetoothSystem) {
+            try {
+                const sessionInfo = await window.bluetoothSystem.checkActiveSession();
+                if (sessionInfo) {
+                    // Update UI to show active session is available
+                    const statusElement = document.getElementById('attendance-status');
+                    if (statusElement && !statusElement.innerHTML.includes('Active Session Found')) {
+                        statusElement.innerHTML = `
+                            <div class="text-green-600 font-medium">
+                                <i class="fas fa-info-circle mr-2"></i>Faculty Session Available
+                            </div>
+                            <div class="text-sm text-gray-600 mt-2">
+                                Subject: ${sessionInfo.subject} | Class: ${sessionInfo.branch}${sessionInfo.year}${sessionInfo.section}
+                            </div>
+                            <div class="text-sm text-blue-600 mt-2">
+                                You can now mark your attendance for this session.
+                            </div>
+                        `;
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking session:', error);
+            }
+        }
+    }, 5000); // Check every 5 seconds
+}
+
+function stopSessionChecking() {
+    if (sessionCheckInterval) {
+        clearInterval(sessionCheckInterval);
+        sessionCheckInterval = null;
+    }
 }
 
 // Simplified attendance system - no timetable restrictions for marking attendance
@@ -2125,6 +2251,22 @@ async function startAttendanceSession() {
         const data = await response.json();
         
         if (data.success) {
+            // Store session information for students to access
+            const sessionInfo = {
+                subject,
+                branch,
+                year,
+                section,
+                periods,
+                date: dateInput.value,
+                facultyId,
+                sessionId: data.sessionId || Date.now().toString()
+            };
+            
+            // Store in both localStorage and sessionStorage for students
+            localStorage.setItem('currentAttendanceSession', JSON.stringify(sessionInfo));
+            sessionStorage.setItem('currentAttendanceSession', JSON.stringify(sessionInfo));
+            
             // Update UI
             const statusElement = document.getElementById('bluetooth-status');
             if (statusElement) {
@@ -2252,11 +2394,13 @@ function updateDetectedSignals(records) {
             signalsDiv.innerHTML = '<p class="text-gray-500">No student signals detected yet</p>';
         } else {
             signalsDiv.innerHTML = records.map(record => `
-                <div class="p-2 border rounded-lg">
-                    <div class="text-sm font-medium">Student Device</div>
-                    <div class="text-xs text-gray-600">ID: ${record.deviceId}</div>
-                    <div class="text-xs text-gray-600">Signal: ${record.rssi} dBm</div>
-                    <div class="text-xs text-gray-600">Roll: ${record.roll}</div>
+                <div class="p-2 border rounded-lg bg-blue-50">
+                    <div class="text-sm font-medium text-blue-800">✓ Student Signal Detected</div>
+                    <div class="text-xs text-gray-600">Roll Number: ${record.roll || record.studentRoll || 'N/A'}</div>
+                    <div class="text-xs text-gray-600">Student Name: ${record.name || record.studentName || 'N/A'}</div>
+                    <div class="text-xs text-gray-600">Device ID: ${record.deviceId || 'N/A'}</div>
+                    <div class="text-xs text-gray-600">Signal Strength: ${record.rssi || 'N/A'} dBm</div>
+                    <div class="text-xs text-gray-600">Time: ${new Date(record.timestamp).toLocaleTimeString()}</div>
                 </div>
             `).join('');
         }
@@ -2403,3 +2547,167 @@ function showCollectedAttendanceRecords(records) {
         }
     }
 }
+
+// ========================================================
+//          BLUETOOTH SYSTEM CLASS
+// ========================================================
+
+class BluetoothSystem {
+    constructor() {
+        this.isSupported = 'bluetooth' in navigator;
+        this.isScanning = false;
+        this.discoveredDevices = new Map();
+        this.currentSession = null;
+    }
+
+    // Mark student attendance - sends signal to faculty
+    async markStudentAttendance() {
+        if (!this.isSupported) {
+            throw new Error('Bluetooth not supported on this device');
+        }
+
+        try {
+            // Get current user info
+            const studentRoll = currentUser?.roll || localStorage.getItem('currentUserId') || 'S101';
+            const studentName = currentUser?.name || 'Student';
+            
+            // Get current subject from faculty session
+            const currentSubject = this.getCurrentSubject();
+            
+            // Create attendance signal data
+            const signalData = {
+                type: 'STUDENT_ATTENDANCE_SIGNAL',
+                roll: studentRoll,
+                name: studentName,
+                deviceId: this.generateDeviceId(),
+                timestamp: new Date().toISOString(),
+                subject: currentSubject
+            };
+
+            // Send signal via WebSocket if available
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(signalData));
+                
+                // Also store locally for backup
+                this.storeAttendanceSignal(signalData);
+                
+                return Promise.resolve('Signal sent successfully');
+            } else {
+                // Fallback: store signal locally and wait for WebSocket connection
+                this.storeAttendanceSignal(signalData);
+                return Promise.resolve('Signal stored locally, waiting for connection');
+            }
+        } catch (error) {
+            console.error('Error marking attendance:', error);
+            throw error;
+        }
+    }
+
+    // Generate unique device ID
+    generateDeviceId() {
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(2, 15);
+        return `student_${currentUser?.roll || 'S101'}_${timestamp}_${random}`;
+    }
+
+    // Get current subject from faculty session (if available)
+    getCurrentSubject() {
+        // Try to get subject from localStorage or session storage
+        const sessionData = localStorage.getItem('currentAttendanceSession') || 
+                           sessionStorage.getItem('currentAttendanceSession');
+        
+        if (sessionData) {
+            try {
+                const session = JSON.parse(sessionData);
+                if (session.subject && session.subject !== 'Unknown') {
+                    return session.subject;
+                }
+            } catch (e) {
+                console.error('Error parsing session data:', e);
+            }
+        }
+        
+        // If no valid session data, show warning to student
+        console.warn('No active faculty attendance session found. Student should wait for faculty to start session.');
+        return 'Unknown';
+    }
+
+    // Store attendance signal locally
+    storeAttendanceSignal(signalData) {
+        const signals = JSON.parse(localStorage.getItem('studentAttendanceSignals') || '[]');
+        signals.push(signalData);
+        localStorage.setItem('studentAttendanceSignals', JSON.stringify(signals));
+        
+        // Also store in session storage for current session
+        sessionStorage.setItem('studentAttendanceSignals', JSON.stringify(signals));
+    }
+
+    // Check for active faculty session and get subject info
+    async checkActiveSession() {
+        try {
+            const response = await fetch('/api/faculty/attendance/session-status');
+            const data = await response.json();
+            
+            if (data.success && data.active && data.session) {
+                // Store session info for students
+                const sessionInfo = {
+                    subject: data.session.subject,
+                    branch: data.session.branch,
+                    year: data.session.year,
+                    section: data.session.section,
+                    periods: data.session.periods,
+                    date: data.session.date,
+                    facultyId: data.session.facultyId
+                };
+                
+                localStorage.setItem('currentAttendanceSession', JSON.stringify(sessionInfo));
+                sessionStorage.setItem('currentAttendanceSession', JSON.stringify(sessionInfo));
+                
+                return sessionInfo;
+            } else {
+                // Clear session info if no active session
+                localStorage.removeItem('currentAttendanceSession');
+                sessionStorage.removeItem('currentAttendanceSession');
+                return null;
+            }
+        } catch (error) {
+            console.error('Error checking active session:', error);
+            return null;
+        }
+    }
+
+    // Start attendance session (for faculty)
+    startAttendanceSession() {
+        if (this.isScanning) {
+            return { success: false, message: 'Session already active' };
+        }
+        
+        this.isScanning = true;
+        
+        // Start WebSocket scanning
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'FACULTY_SCAN_START' }));
+        }
+        
+        return { success: true, message: 'Attendance session started' };
+    }
+
+    // Stop attendance session (for faculty)
+    stopAttendanceSession() {
+        if (!this.isScanning) {
+            return { success: false, message: 'No active session' };
+        }
+        
+        this.isScanning = false;
+        
+        // Stop WebSocket scanning
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'FACULTY_SCAN_STOP' }));
+        }
+        
+        return { success: true, message: 'Attendance session stopped' };
+    }
+}
+
+// Initialize BluetoothSystem globally
+window.bluetoothSystem = new BluetoothSystem();
