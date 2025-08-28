@@ -852,14 +852,36 @@ async function fetchAdminAttendance() {
     } catch (error) { console.error("Failed to fetch admin attendance:", error); }
 }
 
-function downloadAttendance() {
-    const query = new URLSearchParams({
-        branch: document.getElementById('branchFilter').value,
-        year: document.getElementById('yearFilter').value,
-        section: document.getElementById('sectionFilter').value,
-        date: document.getElementById('dateFilter').value
-    }).toString();
-    window.open(`/api/admin/attendance/export?${query}`, '_blank');
+async function downloadAttendance() {
+    try {
+        const filters = {
+            branch: document.getElementById('branchFilter').value,
+            year: document.getElementById('yearFilter').value,
+            section: document.getElementById('sectionFilter').value,
+            date: document.getElementById('dateFilter').value,
+            periods: [1, 2, 3, 4, 5, 6, 7, 8] // Default to all periods
+        };
+        
+        const response = await fetch('/api/admin/attendance/summary/excel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(filters)
+        });
+        
+        if (!response.ok) throw new Error(`Server error ${response.status}`);
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `attendance_summary_${filters.date || 'export'}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (e) {
+        alert(`Failed to download: ${e.message}`);
+    }
 }
 
 async function loadStudentAttendanceSummary(roll) {
