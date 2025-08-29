@@ -17,7 +17,6 @@ const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const XLSX = require('xlsx');
-const mongoose = require('mongoose'); // Added for database connection check
 
 // ========================================================
 //                  IMPORTS & CONFIG
@@ -1235,419 +1234,73 @@ app.delete('/api/admin/users/:userId', async (req, res) => {
 //                  FACULTY ATTENDANCE MARKING
 // ========================================================
 
-// Test endpoint to verify server is working
-app.get('/api/test', (req, res) => {
-  console.log('🧪 [BACKEND] Test endpoint hit');
-  res.json({ 
-    success: true, 
-    message: 'Server is working',
-    timestamp: new Date().toISOString(),
-    models: {
-      Attendance: !!Attendance,
-      Class: !!Class,
-      User: !!User
-    }
-  });
-});
-
 // Mark student attendance via Bluetooth
-app.post('/api/attendance/mark', async (req, res) => {
+app.post('/api/faculty/attendance/mark', async (req, res) => {
   try {
-    console.log('🚀 [BACKEND] Attendance submission request received');
-    console.log('📋 [BACKEND] Request body:', JSON.stringify(req.body, null, 2));
+    const { sessionId, studentRoll, deviceId, method, timestamp } = req.body;
     
-    // Check if Attendance model is available
-    if (!Attendance) {
-      console.error('💥 [BACKEND] Attendance model is not available');
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Attendance model not available' 
-      });
-    }
-    
-    // Check if Class model is available
-    if (!Class) {
-      console.error('💥 [BACKEND] Class model is not available');
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Class model not available' 
-      });
-    }
-    
-    console.log('✅ [BACKEND] Models are available');
-    
-    // Check database connection
-    try {
-      const dbState = mongoose.connection.readyState;
-      console.log('🔌 [BACKEND] Database connection state:', dbState);
-      if (dbState !== 1) {
-        console.error('💥 [BACKEND] Database not connected. State:', dbState);
-        return res.status(500).json({ 
-          success: false, 
-          message: 'Database connection not available' 
-        });
-      }
-      console.log('✅ [BACKEND] Database is connected');
-    } catch (dbError) {
-      console.error('💥 [BACKEND] Error checking database connection:', dbError);
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Database connection error' 
-      });
-    }
-    
-    const { roster, classId, date, periods, facultyId } = req.body;
-    
-    // CRITICAL: Log the exact data received
-    console.log('🔍 [BACKEND] EXACT DATA RECEIVED:');
-    console.log('   - roster type:', typeof roster, 'isArray:', Array.isArray(roster), 'length:', roster?.length);
-    console.log('   - classId:', classId, 'type:', typeof classId);
-    console.log('   - date:', date, 'type:', typeof date);
-    console.log('   - periods:', periods, 'type:', typeof periods, 'isArray:', Array.isArray(periods));
-    console.log('   - facultyId:', facultyId, 'type:', typeof facultyId);
-    
-    // Validate required fields
-    if (!roster || !Array.isArray(roster) || roster.length === 0) {
-      console.log('❌ [BACKEND] Invalid roster data:', { roster, isArray: Array.isArray(roster), length: roster?.length });
+    if (!sessionId || !studentRoll) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Attendance roster is required and must be an array' 
+        message: 'Session ID and student roll are required' 
       });
     }
     
-    if (!classId || !date || !periods) {
-      console.log('❌ [BACKEND] Missing required fields:', { classId, date, periods });
-      return res.status(400).json({ 
+    // Get the session to find faculty ID
+    const session = await AttendanceSession.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ 
         success: false, 
-        message: 'Class ID, date, and periods are required' 
-      });
-    }
-
-    // Validate periods array
-    if (!Array.isArray(periods) || periods.length === 0) {
-      console.log('❌ [BACKEND] Invalid periods data:', { periods, isArray: Array.isArray(periods), length: periods?.length });
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Periods must be an array with at least one period' 
-      });
-    }
-
-    console.log('✅ [BACKEND] Basic validation passed');
-    console.log(`📊 [BACKEND] Processing ${roster.length} student records`);
-    console.log(`🏫 [BACKEND] Class ID: ${classId}`);
-    console.log(`📅 [BACKEND] Date: ${date}`);
-    console.log(`⏰ [BACKEND] Periods: ${JSON.stringify(periods)}`);
-    
-    // Get class information
-    console.log('🔍 [BACKEND] Fetching class information...');
-    let classInfo;
-    try {
-      classInfo = await Class.findById(classId);
-      if (!classInfo) {
-        console.log('❌ [BACKEND] Class not found for ID:', classId);
-        return res.status(404).json({ 
-          success: false, 
-          message: 'Class not found' 
-        });
-      }
-    } catch (classError) {
-      console.error('💥 [BACKEND] Error fetching class:', classError);
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Error fetching class information' 
+        message: 'Attendance session not found' 
       });
     }
     
-    console.log('✅ [BACKEND] Class found:', {
-      subject: classInfo.subject,
-      branch: classInfo.branch,
-      year: classInfo.year,
-      section: classInfo.section
+    // Check if attendance already exists for this student in this session
+    const existingAttendance = await Attendance.findOne({ 
+      sessionId, 
+      studentRoll 
     });
-
-    // Get faculty ID from the request body
-    const actualFacultyId = facultyId || 'F101';
-    console.log('👨‍🏫 [BACKEND] Faculty ID:', actualFacultyId);
     
-    const allAttendanceRecords = [];
-    const errors = [];
-    let totalRecordsCreated = 0;
-
-    console.log('🔄 [BACKEND] Starting to process student records...');
-    console.log(`📊 [BACKEND] Expected total records: ${roster.length} students × ${periods.length} periods = ${roster.length * periods.length}`);
-
-    // Process each student in the roster
-    for (let i = 0; i < roster.length; i++) {
-        const studentRecord = roster[i];
-        
-        console.log(`\n📝 [BACKEND] Processing student ${i + 1}/${roster.length}:`, {
-            studentId: studentRecord.studentId,
-            studentName: studentRecord.studentName,
-            status: studentRecord.status
-        });
-        
-        // Validate student record structure
-        if (!studentRecord || typeof studentRecord !== 'object') {
-            console.error(`🚨 [BACKEND] Invalid student record at index ${i}:`, studentRecord);
-            errors.push(`Invalid student record at index ${i}`);
-            continue;
-        }
-        
-        if (!studentRecord.studentId || !studentRecord.status) {
-            const errorMsg = `Invalid record for student: ${studentRecord.studentName || studentRecord.studentId}`;
-            console.log('❌ [BACKEND]', errorMsg);
-            errors.push(errorMsg);
-            continue;
-        }
-        
-        try {
-            const { studentId, studentName, status, timestamp } = studentRecord;
-            
-            // Process each period for this student
-            for (const periodNum of periods) {
-                try {
-                    console.log(`🔍 [BACKEND] Processing ${studentId} for period ${periodNum}`);
-                    
-                    // Check if attendance already exists for this student on this date and period
-                    const existingAttendance = await Attendance.findOne({ 
-                        studentRoll: studentId,
-                        date: date,
-                        period: periodNum,
-                        subject: classInfo.subject
-                    });
-                    
-                    if (existingAttendance) {
-                        console.log(`✅ [BACKEND] Found existing attendance for ${studentId}, period ${periodNum}, updating...`);
-                        // Update existing attendance
-                        existingAttendance.status = status === 'Present' ? 'Present (Bluetooth)' : 'Absent';
-                        existingAttendance.timestamp = timestamp || new Date();
-                        existingAttendance.method = status === 'Present' ? 'bluetooth' : 'manual';
-                        existingAttendance.deviceId = status === 'Present' ? 'faculty-override' : null;
-                        existingAttendance.rssi = status === 'Present' ? -50 : null;
-                        existingAttendance.period = parseInt(periodNum) || 1; // Ensure period is always a number
-                        
-                        await existingAttendance.save();
-                        allAttendanceRecords.push(existingAttendance);
-                        totalRecordsCreated++;
-                        console.log(`✅ [BACKEND] Successfully updated attendance for ${studentId}, period ${periodNum}`);
-                    } else {
-                        console.log(`🆕 [BACKEND] Creating new attendance record for ${studentId}, period ${periodNum}...`);
-                        // Create new attendance record
-                        const attendanceData = {
-                            studentRoll: studentId,
-                            studentName: studentName,
-                            date: date,
-                            status: status === 'Present' ? 'Present (Bluetooth)' : 'Absent',
-                            subject: classInfo.subject,
-                            period: parseInt(periodNum) || 1, // Ensure period is always a number
-                            method: status === 'Present' ? 'bluetooth' : 'manual',
-                            deviceId: status === 'Present' ? 'faculty-override' : null,
-                            rssi: status === 'Present' ? -50 : null,
-                            timestamp: timestamp || new Date(),
-                            branch: classInfo.branch,
-                            year: classInfo.year,
-                            section: classInfo.section,
-                            facultyId: actualFacultyId
-                        };
-                        
-                        console.log('📋 [BACKEND] Attendance data to save:', attendanceData);
-                        
-                        try {
-                            const attendance = new Attendance(attendanceData);
-                            const savedAttendance = await attendance.save();
-                            console.log('💾 [BACKEND] Attendance saved to database:', savedAttendance._id);
-                            
-                            allAttendanceRecords.push(savedAttendance);
-                            totalRecordsCreated++;
-                            console.log(`✅ [BACKEND] Successfully created attendance for ${studentId}, period ${periodNum}`);
-                        } catch (saveError) {
-                            console.error(`💥 [BACKEND] Error saving attendance for ${studentId}, period ${periodNum}:`, saveError);
-                            console.error(`💥 [BACKEND] Save error details:`, {
-                                message: saveError.message,
-                                code: saveError.code,
-                                name: saveError.name,
-                                attendanceData: attendanceData
-                            });
-                            
-                            // Handle duplicate key errors specifically
-                            if (saveError.code === 11000) {
-                                console.log(`🔄 [BACKEND] Duplicate key error for ${studentId}, period ${periodNum} - trying to update existing record`);
-                                try {
-                                    // Try to find and update the existing record
-                                    const existingRecord = await Attendance.findOneAndUpdate(
-                                        { 
-                                            studentRoll: studentId, 
-                                            date: date, 
-                                            period: periodNum 
-                                        },
-                                        {
-                                            status: status === 'Present' ? 'Present (Bluetooth)' : 'Absent',
-                                            timestamp: timestamp || new Date(),
-                                            method: status === 'Present' ? 'bluetooth' : 'manual',
-                                            deviceId: status === 'Present' ? 'faculty-override' : null,
-                                            rssi: status === 'Present' ? -50 : null,
-                                            studentName: studentName,
-                                            subject: classInfo.subject,
-                                            branch: classInfo.branch,
-                                            year: classInfo.year,
-                                            section: classInfo.section,
-                                            facultyId: actualFacultyId
-                                        },
-                                        { new: true, upsert: false }
-                                    );
-                                    
-                                    if (existingRecord) {
-                                        console.log(`✅ [BACKEND] Successfully updated existing record for ${studentId}, period ${periodNum}`);
-                                        allAttendanceRecords.push(existingRecord);
-                                        totalRecordsCreated++;
-                                    } else {
-                                        console.log(`❌ [BACKEND] Could not find existing record to update for ${studentId}, period ${periodNum}`);
-                                        errors.push(`Failed to save attendance for ${studentName || studentId}, period ${periodNum}: Record exists but could not be updated`);
-                                    }
-                                } catch (updateError) {
-                                    console.error(`💥 [BACKEND] Error updating existing record for ${studentId}, period ${periodNum}:`, updateError);
-                                    errors.push(`Failed to save attendance for ${studentName || studentId}, period ${periodNum}: ${updateError.message}`);
-                                }
-                            } else {
-                                errors.push(`Failed to save attendance for ${studentName || studentId}, period ${periodNum}: ${saveError.message}`);
-                            }
-                        }
-                    }
-                } catch (periodError) {
-                    console.error(`❌ [BACKEND] Error processing period ${periodNum} for student ${studentId}:`, periodError);
-                    errors.push(`Failed to save attendance for ${studentName || studentId}, period ${periodNum}: ${periodError.message}`);
-                }
-            }
-            
-            console.log(`📊 [BACKEND] Student ${studentId} processed: ${periods.length} attendance records created/updated`);
-            
-        } catch (error) {
-            console.error(`❌ [BACKEND] Error processing attendance for student ${studentRecord.studentId}:`, error);
-            errors.push(`Failed to save attendance for ${studentRecord.studentName || studentRecord.studentId}: ${error.message}`);
-        }
-    }
-
-    console.log(`\n📊 [BACKEND] Processing complete. Results:`);
-    console.log(`   ✅ Successfully saved: ${allAttendanceRecords.length} records`);
-    console.log(`   ❌ Errors: ${errors.length}`);
-    console.log(`   📝 Total processed: ${roster.length} students`);
-    console.log(`   📊 Total records created: ${totalRecordsCreated}`);
-    console.log(`   📅 Expected records: ${roster.length * periods.length} (students × periods)`);
-
-    if (allAttendanceRecords.length === 0) {
-      console.log('❌ [BACKEND] No records were saved successfully');
-      console.log('🚨 [BACKEND] CRITICAL: This means the loop is not processing students correctly!');
-      console.log('🚨 [BACKEND] Loop ran but no records were created. Check the individual student processing logs above.');
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No attendance records were saved successfully',
-        errors: errors,
-        processedCount: roster.length,
-        totalRecordsCreated: totalRecordsCreated,
-        expectedCount: roster.length * periods.length,
-        debugInfo: {
-          rosterLength: roster.length,
-          periodsLength: periods.length,
-          classId: classId,
-          date: date,
-          facultyId: actualFacultyId
-        }
+    if (existingAttendance) {
+      // Update existing attendance
+      existingAttendance.status = 'present';
+      existingAttendance.method = method || 'bluetooth';
+      existingAttendance.timestamp = timestamp || new Date();
+      existingAttendance.deviceId = deviceId;
+      await existingAttendance.save();
+      
+      res.json({ 
+        success: true, 
+        message: 'Attendance updated successfully',
+        attendance: existingAttendance
+      });
+    } else {
+      // Create new attendance record
+      const attendance = new Attendance({
+        sessionId,
+        studentRoll,
+        facultyId: session.facultyId,
+        status: 'present',
+        method: method || 'bluetooth',
+        timestamp: timestamp || new Date(),
+        deviceId: deviceId,
+        date: session.date
+      });
+      
+      await attendance.save();
+      
+      res.json({ 
+        success: true, 
+        message: 'Attendance marked successfully',
+        attendance
       });
     }
-
-    const response = {
-      success: true, 
-      message: `Attendance submitted successfully. ${allAttendanceRecords.length} records saved.`,
-      totalRecords: allAttendanceRecords.length,
-      savedRecords: allAttendanceRecords,
-      errors: errors.length > 0 ? errors : null,
-      subject: classInfo.subject,
-      date: date,
-      processedCount: roster.length,
-      expectedCount: roster.length * periods.length
-    };
-
-    console.log('✅ [BACKEND] Sending success response:', response);
-    res.json(response);
     
   } catch (error) {
-    console.error('💥 [BACKEND] Critical error in attendance submission:', error);
-    console.error('💥 [BACKEND] Error details:', {
-      message: error.message,
-      stack: error.stack,
-      requestBody: req.body
-    });
+    console.error('Error marking attendance:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to submit attendance roster',
-      error: error.message
-    });
-  }
-});
-
-// Test endpoint to verify Attendance model and database
-app.post('/api/test-attendance', async (req, res) => {
-  try {
-    console.log('🧪 [BACKEND] Testing Attendance model and database...');
-    
-    // Check if Attendance model is available
-    if (!Attendance) {
-      console.error('💥 [BACKEND] Attendance model is not available');
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Attendance model not available' 
-      });
-    }
-    
-    // Check database connection
-    const dbState = mongoose.connection.readyState;
-    console.log('🔌 [BACKEND] Database connection state:', dbState);
-    if (dbState !== 1) {
-      console.error('💥 [BACKEND] Database not connected. State:', dbState);
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Database connection not available' 
-      });
-    }
-    
-    // Try to create a test attendance record
-    const testAttendance = new Attendance({
-      studentRoll: 'TEST-001',
-      studentName: 'Test Student',
-      date: '2025-08-28',
-      status: 'Present (Test)',
-      subject: 'Test Subject',
-      period: 1,
-      method: 'test',
-      timestamp: new Date(),
-      branch: 'TEST',
-      year: 1,
-      section: 'A',
-      facultyId: 'TEST-FACULTY'
-    });
-    
-    console.log('📝 [BACKEND] Test attendance model created');
-    
-    const savedTest = await testAttendance.save();
-    console.log('💾 [BACKEND] Test attendance saved:', savedTest._id);
-    
-    // Clean up - delete the test record
-    await Attendance.findByIdAndDelete(savedTest._id);
-    console.log('🧹 [BACKEND] Test attendance cleaned up');
-    
-    res.json({ 
-      success: true, 
-      message: 'Attendance model and database are working correctly',
-      testId: savedTest._id,
-      dbState: dbState
-    });
-    
-  } catch (error) {
-    console.error('💥 [BACKEND] Test failed:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Test failed: ' + error.message,
-      error: error.message
+      message: 'Failed to mark attendance' 
     });
   }
 });
@@ -2259,72 +1912,4 @@ process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down server...');
   await closeMongoDBConnection();
   process.exit(0);
-});
-
-// Test endpoint to verify server is working
-app.get('/api/test', (req, res) => {
-  console.log('🧪 [BACKEND] Test endpoint hit');
-  res.json({ 
-    success: true, 
-    message: 'Server is working',
-    timestamp: new Date().toISOString(),
-    models: {
-      Attendance: !!Attendance,
-      Class: !!Class,
-      User: !!User
-    }
-  });
-});
-
-// Database cleanup endpoint to resolve duplicate constraints
-app.post('/api/cleanup-duplicates', async (req, res) => {
-  try {
-    console.log('🧹 [BACKEND] Starting duplicate cleanup...');
-    
-    if (!Attendance) {
-      return res.status(500).json({ success: false, message: 'Attendance model not available' });
-    }
-    
-    // Find and remove duplicate records
-    const duplicates = await Attendance.aggregate([
-      {
-        $group: {
-          _id: { studentRoll: "$studentRoll", date: "$date", period: "$period" },
-          count: { $sum: 1 },
-          docs: { $push: "$_id" }
-        }
-      },
-      {
-        $match: { count: { $gt: 1 } }
-      }
-    ]);
-    
-    console.log(`🔍 [BACKEND] Found ${duplicates.length} duplicate groups`);
-    
-    let cleanedCount = 0;
-    for (const duplicate of duplicates) {
-      // Keep the first record, remove the rest
-      const [keep, ...remove] = duplicate.docs;
-      if (remove.length > 0) {
-        await Attendance.deleteMany({ _id: { $in: remove } });
-        cleanedCount += remove.length;
-        console.log(`🧹 [BACKEND] Cleaned ${remove.length} duplicates for ${duplicate._id.studentRoll}`);
-      }
-    }
-    
-    res.json({ 
-      success: true, 
-      message: `Cleanup completed. Removed ${cleanedCount} duplicate records.`,
-      duplicatesFound: duplicates.length,
-      recordsCleaned: cleanedCount
-    });
-    
-  } catch (error) {
-    console.error('💥 [BACKEND] Cleanup error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Cleanup failed',
-      error: error.message
-    });
-  }
 });

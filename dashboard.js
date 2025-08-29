@@ -2249,7 +2249,6 @@ function markSimpleAttendance() {
 async function showStudentsForAttendance() {
     const classSelect = document.getElementById('class-select');
     if (!classSelect || !classSelect.value) {
-        console.error('No class selected');
         alert('Please select a class first');
         return;
     }
@@ -2297,8 +2296,7 @@ async function startAttendanceSession() {
     const dateInput = document.getElementById('attendance-date');
     const periods = getSelectedPeriods();
     
-    if (!classSelect || !classSelect.value) {
-        console.error('No class selected');
+    if (!classSelect.value) {
         alert('Please select a class first');
         return;
     }
@@ -2432,8 +2430,8 @@ async function stopAttendanceSession() {
                 submitBtn.classList.remove('hidden');
             }
             
-            // Generate complete attendance roster with all students
-            await generateCompleteAttendanceRoster(data.records);
+            // Show collected attendance records (but not saved yet)
+            showCollectedAttendanceRecords(data.records);
             
         } else {
             alert('Failed to stop session: ' + data.message);
@@ -2442,156 +2440,6 @@ async function stopAttendanceSession() {
         console.error('Error stopping session:', error);
         alert('Error stopping attendance session');
     }
-}
-
-// Generate complete attendance roster with all students
-async function generateCompleteAttendanceRoster(detectedRecords) {
-    try {
-        const classSelect = document.getElementById('class-select');
-        if (!classSelect || !classSelect.value) {
-            console.error('No class selected');
-            return;
-        }
-
-        // Get the complete student list for the selected class
-        const response = await fetch(`/api/faculty/class/${classSelect.value}/students`);
-        const data = await response.json();
-        
-        if (!data.success) {
-            console.error('Failed to load students:', data.message || data.error);
-            alert('Failed to load students: ' + (data.message || data.error));
-            return;
-        }
-
-        if (!data.students || data.students.length === 0) {
-            alert('No students found for the selected class. Please check the class configuration.');
-            return;
-        }
-
-        const allStudents = data.students;
-        const detectedStudentIds = new Set(detectedRecords.map(record => record.roll || record.studentRoll));
-        
-        console.log(`[FRONTEND] Generating roster: ${allStudents.length} total students, ${detectedStudentIds.size} detected via Bluetooth`);
-        
-        // Create attendance roster with status for each student
-        const attendanceRoster = allStudents.map(student => {
-            const isDetected = detectedStudentIds.has(student.roll);
-            return {
-                studentId: student.roll,
-                studentName: student.name,
-                status: isDetected ? 'Present' : 'Absent',
-                timestamp: isDetected ? 
-                    detectedRecords.find(r => r.roll === student.roll)?.timestamp || new Date() : 
-                    new Date()
-            };
-        });
-
-        // Store the roster globally for submission
-        window.currentAttendanceRoster = attendanceRoster;
-        
-        // Display the complete roster
-        displayCompleteAttendanceRoster(attendanceRoster);
-        
-    } catch (error) {
-        console.error('Error generating attendance roster:', error);
-        alert('Error generating attendance roster: ' + error.message);
-    }
-}
-
-// Display complete attendance roster with manual override options
-function displayCompleteAttendanceRoster(roster) {
-    const recordsDiv = document.getElementById('attendance-records');
-    if (!recordsDiv) {
-        console.error('Attendance records div not found');
-        return;
-    }
-
-    if (!roster || roster.length === 0) {
-        recordsDiv.innerHTML = '<p class="text-gray-500">No students in roster</p>';
-        return;
-    }
-
-    const presentCount = roster.filter(student => student.status === 'Present').length;
-    const absentCount = roster.filter(student => student.status === 'Absent').length;
-
-    recordsDiv.innerHTML = `
-        <div class="mb-4 p-4 bg-blue-50 rounded-lg">
-            <h5 class="font-medium text-blue-800 mb-2">Complete Attendance Roster</h5>
-            <div class="grid grid-cols-3 gap-4 text-sm">
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-green-600">${presentCount}</div>
-                    <div class="text-green-600">Present</div>
-                </div>
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-red-600">${absentCount}</div>
-                    <div class="text-red-600">Absent</div>
-                </div>
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-blue-600">${roster.length}</div>
-                    <div class="text-blue-600">Total</div>
-                </div>
-            </div>
-            <p class="text-xs text-blue-600 mt-2">You can manually override any student's status before submitting</p>
-        </div>
-        <div class="max-h-96 overflow-y-auto space-y-2">
-            ${roster.map((student, index) => `
-                <div class="flex items-center justify-between p-3 border rounded-lg ${student.status === 'Present' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}">
-                    <div class="flex items-center space-x-3">
-                        <div class="flex-shrink-0">
-                            ${student.status === 'Present' ? 
-                                '<i class="fas fa-check-circle text-green-600 text-lg"></i>' : 
-                                '<i class="fas fa-times-circle text-red-600 text-lg"></i>'
-                            }
-                        </div>
-                        <div>
-                            <div class="font-medium ${student.status === 'Present' ? 'text-green-800' : 'text-red-800'}">
-                                ${student.studentName} (${student.studentId})
-                            </div>
-                            <div class="text-xs text-gray-600">Periods: ${getSelectedPeriods().join(', ')}</div>
-                            ${student.status === 'Present' ? 
-                                `<div class="text-xs text-gray-600">Time: ${new Date(student.timestamp).toLocaleTimeString()}</div>` : 
-                                ''
-                            }
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-2">
-                        <button 
-                            onclick="toggleStudentStatus(${index})" 
-                            class="px-3 py-1 text-xs rounded-lg border transition-colors ${
-                                student.status === 'Present' 
-                                    ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' 
-                                    : 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200'
-                            }"
-                            title="${student.status === 'Present' ? 'Click to mark as absent' : 'Click to mark as present'}"
-                        >
-                            ${student.status === 'Present' ? 'Mark Absent' : 'Mark Present'}
-                        </button>
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-        <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p class="text-sm text-yellow-800">
-                <i class="fas fa-info-circle mr-2"></i>
-                Review the attendance status above. You can manually change any student's status before submitting.
-            </p>
-        </div>
-    `;
-}
-
-// Toggle student attendance status
-function toggleStudentStatus(studentIndex) {
-    if (!window.currentAttendanceRoster) return;
-    
-    const student = window.currentAttendanceRoster[studentIndex];
-    student.status = student.status === 'Present' ? 'Absent' : 'Present';
-    
-    if (student.status === 'Present') {
-        student.timestamp = new Date();
-    }
-    
-    // Refresh the display
-    displayCompleteAttendanceRoster(window.currentAttendanceRoster);
 }
 
 // Start periodic attendance updates
@@ -2608,14 +2456,11 @@ function startAttendanceUpdates() {
             const data = await response.json();
             
             if (data.success && data.active) {
-                // Ensure records is always an array, even if the API returns undefined
-                const records = data.records || [];
-                updateDetectedSignals(records);
-                updateAttendanceRecords(records);
+                updateDetectedSignals(data.records);
+                updateAttendanceRecords(data.records);
             }
         } catch (error) {
             console.error('Error updating attendance:', error);
-            // Don't crash the interval, just log the error
         }
     }, 2000); // Update every 2 seconds
 }
@@ -2630,12 +2475,6 @@ function stopAttendanceUpdates() {
 
 // Update detected signals display
 function updateDetectedSignals(records) {
-    // Guard clause to prevent crash when records is undefined or null
-    if (!records || !Array.isArray(records)) {
-        console.warn('[FRONTEND] updateDetectedSignals called with invalid records:', records);
-        return;
-    }
-    
     const signalsDiv = document.getElementById('detected-signals');
     if (signalsDiv) {
         if (records.length === 0) {
@@ -2657,12 +2496,6 @@ function updateDetectedSignals(records) {
 
 // Update attendance records display
 function updateAttendanceRecords(records) {
-    // Guard clause to prevent crash when records is undefined or null
-    if (!records || !Array.isArray(records)) {
-        console.warn('[FRONTEND] updateAttendanceRecords called with invalid records:', records);
-        return;
-    }
-    
     const recordsDiv = document.getElementById('attendance-records');
     if (recordsDiv) {
         if (records.length === 0) {
@@ -2682,12 +2515,6 @@ function updateAttendanceRecords(records) {
 
 // Show final attendance records after session ends
 function showFinalAttendanceRecords(records) {
-    // Guard clause to prevent crash when records is undefined or null
-    if (!records || !Array.isArray(records)) {
-        console.warn('[FRONTEND] showFinalAttendanceRecords called with invalid records:', records);
-        return;
-    }
-    
     const recordsDiv = document.getElementById('attendance-records');
     if (recordsDiv) {
         if (records.length === 0) {
@@ -2704,8 +2531,8 @@ function showFinalAttendanceRecords(records) {
                         <div class="text-xs text-gray-600">Period: ${record.period}</div>
                         <div class="text-xs text-gray-600">Subject: ${record.subject}</div>
                         <div class="text-xs text-gray-600">Time: ${new Date(record.timestamp).toLocaleTimeString()}</div>
-                </div>
-            `).join('')}
+                    </div>
+                `).join('')}
             `;
         }
     }
@@ -2714,132 +2541,19 @@ function showFinalAttendanceRecords(records) {
 // Submit attendance records manually
 async function submitAttendance() {
     try {
-        console.log('🚀 [FRONTEND] Starting attendance submission...');
-        
-        // Check if we have a complete roster
-        if (!window.currentAttendanceRoster || window.currentAttendanceRoster.length === 0) {
-            console.error('❌ [FRONTEND] No attendance roster to submit');
-            alert('No attendance roster to submit. Please stop the session first to generate the roster.');
-            return;
-        }
-
-        console.log('📋 [FRONTEND] Current attendance roster:', window.currentAttendanceRoster);
-
         const submitBtn = document.getElementById('submit-attendance-btn');
         if (submitBtn) {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
         }
         
-        // Get form values
-        const classSelect = document.getElementById('class-select');
-        const dateInput = document.getElementById('attendance-date');
-        const periods = getSelectedPeriods();
-        
-        console.log('📝 [FRONTEND] Form values:', {
-            classId: classSelect?.value,
-            date: dateInput?.value,
-            periods: periods,
-            facultyId: currentUser?.roll || localStorage.getItem('currentUserId') || 'F101'
-        });
-        
-        // Validate form values
-        if (!classSelect?.value) {
-            console.error('❌ [FRONTEND] No class selected');
-            alert('Please select a class first');
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i>Submit Attendance';
-            }
-            return;
-        }
-        
-        if (!dateInput?.value) {
-            console.error('❌ [FRONTEND] No date selected');
-            alert('Please select a date first');
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i>Submit Attendance';
-            }
-            return;
-        }
-        
-        if (!periods || periods.length === 0) {
-            console.error('❌ [FRONTEND] No periods selected');
-            alert('Please select at least one period');
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i>Submit Attendance';
-            }
-            return;
-        }
-        
-        // Prepare the attendance data for submission
-        const attendanceData = {
-            roster: window.currentAttendanceRoster,
-            classId: classSelect.value,
-            date: dateInput.value,
-            periods: periods,
-            facultyId: currentUser?.roll || localStorage.getItem('currentUserId') || 'F101'
-        };
-        
-        console.log('📤 [FRONTEND] Prepared attendance data for submission:', attendanceData);
-        console.log('📊 [FRONTEND] Roster summary:', {
-            totalStudents: attendanceData.roster.length,
-            presentCount: attendanceData.roster.filter(s => s.status === 'Present').length,
-            absentCount: attendanceData.roster.filter(s => s.status === 'Absent').length
-        });
-        
-        // Validate roster data structure
-        console.log('🔍 [FRONTEND] Validating roster data structure...');
-        const rosterValidationErrors = [];
-        
-        attendanceData.roster.forEach((student, index) => {
-            if (!student.studentId) {
-                rosterValidationErrors.push(`Student ${index + 1}: Missing studentId`);
-            }
-            if (!student.studentName) {
-                rosterValidationErrors.push(`Student ${index + 1}: Missing studentName`);
-            }
-            if (!student.status || !['Present', 'Absent'].includes(student.status)) {
-                rosterValidationErrors.push(`Student ${index + 1}: Invalid status "${student.status}"`);
-            }
-        });
-        
-        if (rosterValidationErrors.length > 0) {
-            console.error('❌ [FRONTEND] Roster validation failed:', rosterValidationErrors);
-            alert('Invalid roster data: ' + rosterValidationErrors.join(', '));
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i>Submit Attendance';
-            }
-            return;
-        }
-        
-        console.log('✅ [FRONTEND] Roster validation passed');
-        
-        console.log('🌐 [FRONTEND] Sending request to /api/attendance/mark...');
-        
-        const response = await fetch('/api/attendance/mark', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(attendanceData)
-        });
-        
-        console.log('📥 [FRONTEND] Response received:', {
-            status: response.status,
-            statusText: response.statusText,
-            ok: response.ok
+        const response = await fetch('/api/faculty/attendance/submit', {
+            method: 'POST'
         });
         
         const data = await response.json();
-        console.log('📋 [FRONTEND] Response data:', data);
         
         if (data.success) {
-            console.log('✅ [FRONTEND] Attendance submitted successfully!');
-            
             // Show success message
             const statusElement = document.getElementById('bluetooth-status');
             if (statusElement) {
@@ -2866,19 +2580,15 @@ async function submitAttendance() {
                 showFinalAttendanceRecords(data.savedRecords);
             }
             
-            // Clear the current roster
-            window.currentAttendanceRoster = null;
-            
             // Refresh student attendance data
             setTimeout(() => {
                 if (currentUser && currentRole === 'faculty') {
                     // Trigger a refresh of student attendance data
-                    console.log('🔄 [FRONTEND] Attendance submitted successfully, student data will be updated');
+                    console.log('Attendance submitted successfully, student data will be updated');
                 }
             }, 1000);
             
         } else {
-            console.error('❌ [FRONTEND] Backend returned error:', data);
             alert('Failed to submit attendance: ' + data.message);
             
             // Re-enable submit button
@@ -2888,12 +2598,8 @@ async function submitAttendance() {
             }
         }
     } catch (error) {
-        console.error('💥 [FRONTEND] Network or other error during submission:', error);
-        console.error('💥 [FRONTEND] Error details:', {
-            message: error.message,
-            stack: error.stack
-        });
-        alert('Network error submitting attendance: ' + error.message);
+        console.error('Error submitting attendance:', error);
+        alert('Network error submitting attendance');
         
         // Re-enable submit button
         const submitBtn = document.getElementById('submit-attendance-btn');
@@ -2906,12 +2612,6 @@ async function submitAttendance() {
 
 // Show collected attendance records (before submission)
 function showCollectedAttendanceRecords(records) {
-    // Guard clause to prevent crash when records is undefined or null
-    if (!records || !Array.isArray(records)) {
-        console.warn('[FRONTEND] showCollectedAttendanceRecords called with invalid records:', records);
-        return;
-    }
-    
     const recordsDiv = document.getElementById('attendance-records');
     if (recordsDiv) {
         if (records.length === 0) {
