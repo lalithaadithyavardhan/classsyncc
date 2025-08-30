@@ -575,21 +575,39 @@ app.get('/api/faculty/classes/:facultyId', async (req, res) => {
   }
 });
 
+// Add this code to backend-server.js
+
 app.get('/api/faculty/class/:classId/students', async (req, res) => {
   try {
     const { classId } = req.params;
-    const cls = await Class.findById(classId);
-        if (!cls) return res.status(404).json({ success: false, error: 'Class not found' });
+    console.log(`[DEBUG] Received request for classId: ${classId}`); // Log 1
 
-        const students = await User.find({
+    const cls = await Class.findById(classId).lean();
+    if (!cls) {
+        console.log('[DEBUG] Class not found in database.'); // Log 2
+        return res.status(404).json({ success: false, error: 'Class not found' });
+    }
+
+    console.log('[DEBUG] Found Class document:', cls); // Log 3
+
+    const studentQuery = {
       role: 'student',
       branch: cls.branch,
       year: cls.year,
-            section: cls.section
-        });
+      section: cls.section,
+      semester: cls.semester
+    };
+    
+    console.log('[DEBUG] Searching for students with this exact query:', studentQuery); // Log 4
 
-        res.json({ success: true, students, classData: cls });
+    const students = await User.find(studentQuery);
+    
+    console.log(`[DEBUG] Found ${students.length} students.`); // Log 5
+
+    res.json({ success: true, students, classData: cls });
+
   } catch (error) {
+    console.error('[DEBUG] Error fetching students:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch students' });
   }
 });

@@ -272,7 +272,6 @@ function loadAttendanceContent() {
         initializeAdminAttendanceDashboard();
     }
 }
-
 // ========================================================
 //          ADMIN ATTENDANCE LOGIC
 // ========================================================
@@ -2277,7 +2276,7 @@ async function showStudentsForAttendance() {
             if (studentsDiv) {
                 studentsDiv.innerHTML = `
                     <div class="bg-blue-50 p-3 rounded-lg mb-3">
-                        <h5 class="font-medium text-blue-800">${data.classData.subject} - ${data.classData.branch}${data.classData.year}${data.classData.section}</h5>
+                        <h5 class="font-medium text-blue-800">${data.classData.subject} => ${data.classData.branch}, ${data.classData.year} -${data.classData.section} -${data.classData.semester}</h5>
                         <p class="text-sm text-blue-600">Students: ${data.students.length}</p>
                     </div>
                     <div class="max-h-64 overflow-y-auto space-y-2">

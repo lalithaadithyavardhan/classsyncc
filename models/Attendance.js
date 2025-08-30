@@ -13,6 +13,7 @@ const attendanceSchema = new mongoose.Schema({
     branch: String,
     year: Number,
     section: String,
+    semester: String,
     facultyId: String,
     sessionId: String
 });
