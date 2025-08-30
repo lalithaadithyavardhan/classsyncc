@@ -317,46 +317,332 @@ function initAdminTimetableEditor() {
         row.innerHTML += cellContent;
         gridBody.appendChild(row);
     });
+    
+    // Set default values immediately and also with a delay to ensure they're set
+    const setDefaultValues = () => {
+        const branchSelect = document.getElementById('admin-branch-select');
+        const yearSelect = document.getElementById('admin-year-select');
+        const sectionSelect = document.getElementById('admin-section-select');
+        const semesterSelect = document.getElementById('admin-semester-select');
+        
+        if (branchSelect) branchSelect.value = 'IT';
+        if (yearSelect) yearSelect.value = '3';
+        if (sectionSelect) sectionSelect.value = 'B';
+        if (semesterSelect) semesterSelect.value = '5';
+        
+        console.log('[ADMIN] Default values set:', {
+            branch: branchSelect ? branchSelect.value : 'not found',
+            year: yearSelect ? yearSelect.value : 'not found',
+            section: sectionSelect ? sectionSelect.value : 'not found',
+            semester: semesterSelect ? semesterSelect.value : 'not found'
+        });
+        
+        // Verify the values were set correctly
+        if (branchSelect && branchSelect.value !== 'IT') {
+            console.warn('[ADMIN] Branch value not set correctly:', branchSelect.value);
+        }
+        if (yearSelect && yearSelect.value !== '3') {
+            console.warn('[ADMIN] Year value not set correctly:', yearSelect.value);
+        }
+        if (sectionSelect && sectionSelect.value !== 'B') {
+            console.warn('[ADMIN] Section value not set correctly:', sectionSelect.value);
+        }
+        if (semesterSelect && semesterSelect.value !== '5') {
+            console.warn('[ADMIN] Semester value not set correctly:', semesterSelect.value);
+        }
+    };
+    
+    // Try to set values immediately
+    setDefaultValues();
+    
+    // Also try with a delay to ensure DOM is fully ready
+    setTimeout(setDefaultValues, 100);
+    
+    // Force set values one more time after a longer delay to ensure they're set
+    setTimeout(() => {
+        console.log('[ADMIN] Final check of form values...');
+        setDefaultValues();
+        
+        // Verify final state
+        const finalCheck = {
+            branch: document.getElementById('admin-branch-select')?.value,
+            year: document.getElementById('admin-year-select')?.value,
+            section: document.getElementById('admin-section-select')?.value,
+            semester: document.getElementById('admin-semester-select')?.value
+        };
+        
+        if (finalCheck.branch === 'IT' && finalCheck.year === '3' && finalCheck.section === 'B' && finalCheck.semester === '5') {
+            console.log('[ADMIN] Form values successfully set to defaults');
+        } else {
+            console.warn('[ADMIN] Form values not set correctly after final attempt:', finalCheck);
+            
+            // If still not working, try to debug what's happening
+            const branchEl = document.getElementById('admin-branch-select');
+            const yearEl = document.getElementById('admin-year-select');
+            const sectionEl = document.getElementById('admin-section-select');
+            const semesterEl = document.getElementById('admin-semester-select');
+            
+            console.error('[ADMIN] Form elements status:', {
+                branchEl: !!branchEl,
+                yearEl: !!yearEl,
+                sectionEl: !!sectionEl,
+                semesterEl: !!semesterEl
+            });
+            
+            if (branchEl) {
+                console.log('[ADMIN] Branch element exists but value is:', branchEl.value);
+                console.log('[ADMIN] Branch element options:', Array.from(branchEl.options).map(opt => ({value: opt.value, text: opt.text, selected: opt.selected})));
+            }
+        }
+    }, 500);
+    
+    // Add a button to manually reset form values if needed
+    const resetButton = document.createElement('button');
+    resetButton.textContent = 'Reset Form Values';
+    resetButton.className = 'px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 ml-4';
+    resetButton.onclick = () => {
+        setDefaultValues();
+        alert('Form values reset to defaults:\nBranch: IT\nYear: 3\nSection: B\nSemester: 5');
+    };
+    
+    // Add a button to check current form state
+    const checkButton = document.createElement('button');
+    checkButton.textContent = 'Check Form State';
+    checkButton.className = 'px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ml-2';
+    checkButton.onclick = () => {
+        const branchEl = document.getElementById('admin-branch-select');
+        const yearEl = document.getElementById('admin-year-select');
+        const sectionEl = document.getElementById('admin-section-select');
+        const semesterEl = document.getElementById('admin-semester-select');
+        
+        const currentValues = {
+            branch: branchEl ? branchEl.value : 'Element not found',
+            year: yearEl ? yearEl.value : 'Element not found',
+            section: sectionEl ? sectionEl.value : 'Element not found',
+            semester: semesterEl ? semesterEl.value : 'Element not found'
+        };
+        
+        const elementStatus = {
+            branchEl: !!branchEl,
+            yearEl: !!yearEl,
+            sectionEl: !!sectionEl,
+            semesterEl: !!semesterEl
+        };
+        
+        console.log('[ADMIN] Current form state:', currentValues);
+        console.log('[ADMIN] Element status:', elementStatus);
+        
+        if (branchEl) {
+            console.log('[ADMIN] Branch element details:', {
+                value: branchEl.value,
+                options: Array.from(branchEl.options).map(opt => ({value: opt.value, text: opt.text, selected: opt.selected}))
+            });
+        }
+        
+        alert(`Current Form State:\nBranch: ${currentValues.branch}\nYear: ${currentValues.year}\nSection: ${currentValues.section}\nSemester: ${currentValues.semester}\n\nElement Status:\nBranch: ${elementStatus.branchEl ? 'Found' : 'Missing'}\nYear: ${elementStatus.yearEl ? 'Found' : 'Missing'}\nSection: ${elementStatus.sectionEl ? 'Found' : 'Missing'}\nSemester: ${elementStatus.semesterEl ? 'Found' : 'Missing'}`);
+    };
+    
+    // Insert the buttons after the view button
+    const viewButton = document.getElementById('admin-view-timetable-btn');
+    if (viewButton && viewButton.parentNode) {
+        viewButton.parentNode.appendChild(resetButton);
+        viewButton.parentNode.appendChild(checkButton);
+    }
+    
     document.getElementById('admin-view-timetable-btn').addEventListener('click', handleAdminViewTimetable);
     document.getElementById('admin-save-timetable-btn').addEventListener('click', handleAdminSaveTimetable);
 }
 
 async function handleAdminViewTimetable() {
-    const branch = document.getElementById('admin-branch-select').value;
-    const year = document.getElementById('admin-year-select').value;
-    const section = document.getElementById('admin-section-select').value;
-    const semester = document.getElementById('admin-semester-select').value;
+    // Get form elements first
+    const branchEl = document.getElementById('admin-branch-select');
+    const yearEl = document.getElementById('admin-year-select');
+    const sectionEl = document.getElementById('admin-section-select');
+    const semesterEl = document.getElementById('admin-semester-select');
+    
+    // Check if elements exist
+    if (!branchEl || !yearEl || !sectionEl) {
+        console.error('[ADMIN] Required form elements not found');
+        alert('Form not properly initialized. Please refresh the page and try again.');
+        return;
+    }
+    
+    // Get values and validate they're not undefined
+    const branch = branchEl.value;
+    const year = yearEl.value;
+    const section = sectionEl.value;
+    const semester = semesterEl ? semesterEl.value : '';
+    
+    console.log('[ADMIN] Form elements found:', {
+        branchEl: !!branchEl,
+        yearEl: !!yearEl,
+        sectionEl: !!sectionEl,
+        semesterEl: !!semesterEl
+    });
+    
+    console.log('[ADMIN] Form values retrieved:', { branch, year, section, semester });
+    
+    // Validate that we have actual values, not undefined
+    if (branch === 'undefined' || year === 'undefined' || section === 'undefined') {
+        console.error('[ADMIN] Form values are undefined, attempting to reset...');
+        // Try to reset the form values
+        if (branchEl) branchEl.value = 'IT';
+        if (yearEl) yearEl.value = '3';
+        if (sectionEl) sectionEl.value = 'B';
+        if (semesterEl) semesterEl.value = '5';
+        
+        // Get the values again
+        const newBranch = branchEl.value;
+        const newYear = yearEl.value;
+        const newSection = sectionEl.value;
+        const newSemester = semesterEl ? semesterEl.value : '';
+        
+        console.log('[ADMIN] After reset, new values:', { newBranch, newYear, newSection, newSemester });
+        
+        if (newBranch === 'undefined' || newYear === 'undefined' || newSection === 'undefined') {
+            alert('Form is not working properly. Please refresh the page.');
+            return;
+        }
+        
+        // Use the new values
+        branch = newBranch;
+        year = newYear;
+        section = newSection;
+        semester = newSemester;
+    }
+    
+    console.log('[ADMIN] View timetable request:', { branch, year, section, semester });
+    
     document.querySelectorAll('.interactive-timetable-input').forEach(input => input.value = '');
+    
     try {
-        const response = await fetch(`/api/timetable/student?branch=${branch}&year=${year}&section=${section}&semester=${encodeURIComponent(semester)}`);
+        const queryParams = new URLSearchParams({ branch, year, section });
+        console.log('[ADMIN] Semester value:', semester, 'Type:', typeof semester, 'Length:', semester ? semester.length : 'undefined');
+        
+        if (semester && semester.trim()) {
+            queryParams.append('semester', semester.trim());
+            console.log('[ADMIN] Added semester to query:', semester.trim());
+        } else {
+            console.log('[ADMIN] No semester added to query - semester is empty or undefined');
+        }
+        
+        const url = `/api/admin/timetable?${queryParams.toString()}`;
+        console.log('[ADMIN] Fetching from URL:', url);
+        
+        const response = await fetch(url);
         const data = await response.json();
-        if (data.success && data.timetable) {
+        
+        console.log('[ADMIN] Server response:', data);
+        
+        if (data.success && data.timetable && data.timetable.length > 0) {
             const periodMap = { '9:30': 1, '10:20': 2, '11:10': 3, '12:00': 4, '1:50': 5, '2:40': 6, '3:30': 7 };
+            let loadedCount = 0;
+            
             data.timetable.forEach(slot => {
+                console.log('[ADMIN] Processing slot:', slot);
+                console.log('[ADMIN] Slot startTime:', slot.startTime, 'Type:', typeof slot.startTime);
+                console.log('[ADMIN] Available periodMap keys:', Object.keys(periodMap));
+                
                 const period = periodMap[slot.startTime];
+                console.log('[ADMIN] Mapped period:', period);
+                
                 if (period) {
                     const sel = (p, placeholder) => `input[data-day="${slot.day.toUpperCase()}"][data-period="${p}"][placeholder="${placeholder}"]`;
-                    document.querySelector(sel(period, "Subject")).value = slot.subject;
-                    document.querySelector(sel(period, "Faculty ID")).value = slot.facultyId;
-                    document.querySelector(sel(period, "Room")).value = slot.room;
+                    const subjectInput = document.querySelector(sel(period, "Subject"));
+                    const facultyInput = document.querySelector(sel(period, "Faculty ID"));
+                    const roomInput = document.querySelector(sel(period, "Room"));
+                    
+                    if (subjectInput && facultyInput && roomInput) {
+                        subjectInput.value = slot.subject || '';
+                        facultyInput.value = slot.facultyId || '';
+                        roomInput.value = slot.room || '';
+                        loadedCount++;
+                        console.log('[ADMIN] Successfully loaded slot for period:', period, 'day:', slot.day);
+                    } else {
+                        console.warn('[ADMIN] Could not find input fields for period:', period, 'day:', slot.day);
+                    }
+                } else {
+                    console.warn('[ADMIN] No period mapping found for startTime:', slot.startTime);
                 }
             });
-            alert('Timetable loaded!');
-        } else { alert('No timetable found.'); }
+            
+            console.log('[ADMIN] Loaded', loadedCount, 'slots');
+            alert(`Timetable loaded successfully! Loaded ${loadedCount} time slots.`);
+        } else {
+            console.log('[ADMIN] No timetable data found');
+            alert('No timetable found for the selected criteria.');
+        }
     } catch (error) {
-        console.error('Failed to fetch timetable:', error);
-        alert('Error loading timetable.');
+        console.error('[ADMIN] Failed to fetch timetable:', error);
+        alert('Error loading timetable. Please try again.');
     }
 }
 
 async function handleAdminSaveTimetable() {
     if (!confirm('Are you sure you want to overwrite this timetable?')) return;
-    const branch = document.getElementById('admin-branch-select').value;
-    const year = document.getElementById('admin-year-select').value;
-    const section = document.getElementById('admin-section-select').value;
-    const semester = document.getElementById('admin-semester-select').value;
+    
+    // Get form values with debugging
+    const branchSelect = document.getElementById('admin-branch-select');
+    const yearSelect = document.getElementById('admin-year-select');
+    const sectionSelect = document.getElementById('admin-section-select');
+    const semesterSelect = document.getElementById('admin-semester-select');
+    
+    console.log('[ADMIN] Save timetable - Form elements found:', {
+        branchSelect: !!branchSelect,
+        yearSelect: !!yearSelect,
+        sectionSelect: !!sectionSelect,
+        semesterSelect: !!semesterSelect
+    });
+    
+    if (!branchSelect || !yearSelect || !sectionSelect) {
+        console.error('[ADMIN] Required form elements not found');
+        alert('Form not properly initialized. Please refresh the page and try again.');
+        return;
+    }
+    
+    // Get values and validate they're not undefined
+    let branch = branchSelect.value;
+    let year = yearSelect.value;
+    let section = sectionSelect.value;
+    let semester = semesterSelect ? semesterSelect.value : '';
+    
+    console.log('[ADMIN] Save timetable - Form values retrieved:', { branch, year, section, semester });
+    
+    // Check if values are undefined and try to fix them
+    if (branch === 'undefined' || year === 'undefined' || section === 'undefined') {
+        console.error('[ADMIN] Form values are undefined, attempting to reset...');
+        // Try to reset the form values
+        if (branchSelect) branchSelect.value = 'IT';
+        if (yearSelect) yearSelect.value = '3';
+        if (sectionSelect) sectionSelect.value = 'B';
+        if (semesterSelect) semesterSelect.value = '5';
+        
+        // Get the values again
+        branch = branchSelect.value;
+        year = yearSelect.value;
+        section = sectionSelect.value;
+        semester = semesterSelect ? semesterSelect.value : '';
+        
+        console.log('[ADMIN] After reset, new values:', { branch, year, section, semester });
+        
+        if (branch === 'undefined' || year === 'undefined' || section === 'undefined') {
+            alert('Form is not working properly. Please refresh the page.');
+            return;
+        }
+    }
+    
+    console.log('[ADMIN] Save timetable - Final form values:', { branch, year, section, semester });
+    
+    // Validate required fields
+    if (!branch || !year || !section) {
+        console.error('[ADMIN] Missing required fields:', { branch, year, section });
+        alert(`Please select Branch, Year, and Section before saving.\n\nCurrent values:\nBranch: ${branch || 'Not selected'}\nYear: ${year || 'Not selected'}\nSection: ${section || 'Not selected'}`);
+        return;
+    }
+    
     const timetableData = [];
     const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '1:50', 6: '2:40', 7: '3:30' };
+    
     document.querySelectorAll('#admin-timetable-grid-body tr').forEach(row => {
         const day = row.querySelector('th').textContent;
         for (let period = 1; period <= 7; period++) {
@@ -373,16 +659,65 @@ async function handleAdminSaveTimetable() {
             }
         }
     });
+    
+    // Validate that we have some data to save
+    if (timetableData.length === 0) {
+        alert('Please enter at least one subject before saving.');
+        return;
+    }
+    
+    // Validate data structure
+    for (let i = 0; i < timetableData.length; i++) {
+        const entry = timetableData[i];
+        if (!entry.subject || !entry.subject.trim()) {
+            alert(`Entry ${i + 1} has an empty subject. Please fill in all required fields.`);
+            return;
+        }
+        if (!entry.facultyId || !entry.facultyId.trim()) {
+            alert(`Entry ${i + 1} has an empty faculty ID. Please fill in all required fields.`);
+            return;
+        }
+        if (!entry.room || !entry.room.trim()) {
+            alert(`Entry ${i + 1} has an empty room. Please fill in all required fields.`);
+            return;
+        }
+        
+        // Ensure proper data types
+        entry.subject = entry.subject.trim();
+        entry.facultyId = entry.facultyId.trim();
+        entry.room = entry.room.trim();
+        entry.day = entry.day.trim();
+        entry.startTime = entry.startTime.trim();
+    }
+    
     try {
+        const requestData = { branch, year, section, semester, updates: timetableData };
+        console.log('[FRONTEND] Sending timetable data:', requestData);
+        console.log('[FRONTEND] Request data validation:', {
+            hasBranch: !!requestData.branch,
+            hasYear: !!requestData.year,
+            hasSection: !!requestData.section,
+            hasUpdates: !!requestData.updates,
+            updatesLength: requestData.updates ? requestData.updates.length : 0,
+            branchType: typeof requestData.branch,
+            yearType: typeof requestData.year,
+            sectionType: typeof requestData.section
+        });
+        
         const response = await fetch('/api/admin/timetable/bulk-update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ branch, year, section, semester, timetableEntries: timetableData })
+            body: JSON.stringify(requestData)
         });
+        
         const result = await response.json();
+        console.log('[FRONTEND] Server response:', result);
+        
         if (result.success) {
             alert('Timetable saved successfully!');
-        } else { throw new Error(result.message || 'Failed to save.'); }
+        } else { 
+            throw new Error(result.message || 'Failed to save.'); 
+        }
     } catch (error) {
         console.error('Failed to save timetable:', error);
         alert(`Error saving timetable: ${error.message}`);

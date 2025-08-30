@@ -532,18 +532,33 @@ async function downloadAdminSummaryExcel() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(filters)
         });
-        if (!response.ok) throw new Error(`Server error ${response.status}`);
+        if (!response.ok) throw new Error(`Server error: ${response.statusText}`);
+        
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
+        a.style.display = 'none';
         a.href = url;
-        a.download = `attendance_summary_${filters.date}.xlsx`;
+        
+        // This part reads the actual filename from the server response
+        const disposition = response.headers.get('content-disposition');
+        let filename = `attendance_summary.xlsx`; // A fallback filename
+        if (disposition && disposition.indexOf('attachment') !== -1) {
+            const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+            const matches = filenameRegex.exec(disposition);
+            if (matches != null && matches[1]) {
+                filename = matches[1].replace(/['"]/g, '');
+            }
+        }
+        
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
-        a.remove();
         window.URL.revokeObjectURL(url);
+        a.remove();
+
     } catch (e) {
-        alert(`Failed to download: ${e.message}`);
+        alert(`Failed to download file: ${e.message}`);
     }
 }
 
@@ -1571,10 +1586,10 @@ function initAdminTimetableEditor() {
 }
 
 async function handleAdminViewTimetable() {
-    const branch = document.getElementById('admin-branch-select').value;
-    const year = document.getElementById('admin-year-select').value;
-    const section = document.getElementById('admin-section-select').value;
-    const semester = document.getElementById('admin-semester-select')?.value || '';
+    const branch = document.getElementById('admin-tt-branch-select').value;
+    const year = document.getElementById('admin-tt-year-select').value;
+    const section = document.getElementById('admin-tt-section-select').value;
+    const semester = document.getElementById('admin-tt-semester-select')?.value || '';
     document.querySelectorAll('.interactive-timetable-input').forEach(input => input.value = '');
     try {
         const query = new URLSearchParams({ branch, year, section, ...(semester ? { semester } : {}) }).toString();
@@ -1604,10 +1619,10 @@ async function handleAdminViewTimetable() {
 
 async function handleAdminSaveTimetable() {
     if (!confirm('Are you sure you want to overwrite this timetable?')) return;
-    const branch = document.getElementById('admin-branch-select').value;
-    const year = document.getElementById('admin-year-select').value;
-    const section = document.getElementById('admin-section-select').value;
-    const semester = document.getElementById('admin-semester-select')?.value || '';
+    const branch = document.getElementById('admin-tt-branch-select').value;
+    const year = document.getElementById('admin-tt-year-select').value;
+    const section = document.getElementById('admin-tt-section-select').value;
+    const semester = document.getElementById('admin-tt-semester-select')?.value || '';
     const timetableData = [];
     const timeMap = { 1: '9:30', 2: '10:20', 3: '11:10', 4: '12:00', 5: '1:50', 6: '2:40', 7: '3:30' };
     document.querySelectorAll('#admin-timetable-grid-body tr').forEach(row => {

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Admin Timetable</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; }
+        .error { border-left-color: #dc3545; background: #f8d7da; }
+        .success { border-left-color: #28a745; background: #d4edda; }
+    </style>
+</head>
+<body>
+    <h1>Test Admin Timetable API</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Fetch Timetable for IT Branch, 3rd Year, Section B, 5th Semester</h2>
+        <button onclick="testFetchTimetable()">Test Fetch</button>
+        <div id="result1" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Check MongoDB Data Structure</h2>
+        <button onclick="testMongoData()">Test MongoDB</button>
+        <div id="result2" class="result"></div>
+    </div>
+
+    <script>
+        async function testFetchTimetable() {
+            const resultDiv = document.getElementById('result1');
+            resultDiv.innerHTML = 'Testing...';
+            resultDiv.className = 'result';
+            
+            try {
+                const response = await fetch('/api/admin/timetable?branch=IT&year=3&section=B&semester=5');
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <strong>Success!</strong><br>
+                        Found ${data.timetable.length} timetable entries<br>
+                        <pre>${JSON.stringify(data.timetable, null, 2)}</pre>
+                    `;
+                    resultDiv.className = 'result success';
+                } else {
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.message}`;
+                    resultDiv.className = 'result error';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<strong>Exception:</strong> ${error.message}`;
+                resultDiv.className = 'result error';
+            }
+        }
+        
+        async function testMongoData() {
+            const resultDiv = document.getElementById('result2');
+            resultDiv.innerHTML = 'Testing MongoDB connection...';
+            resultDiv.className = 'result';
+            
+            try {
+                // Test if we can connect to the database
+                const response = await fetch('/api/admin/timetable?branch=IT&year=3&section=B');
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <strong>MongoDB Connection Success!</strong><br>
+                        Database is accessible<br>
+                        Found ${data.timetable.length} entries without semester filter<br>
+                        <pre>${JSON.stringify(data.timetable.slice(0, 3), null, 2)}</pre>
+                    `;
+                    resultDiv.className = 'result success';
+                } else {
+                    resultDiv.innerHTML = `<strong>MongoDB Error:</strong> ${data.message}`;
+                    resultDiv.className = 'result error';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<strong>MongoDB Exception:</strong> ${error.message}`;
+                resultDiv.className = 'result error';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -21,6 +21,7 @@ const XLSX = require('xlsx');
 // ========================================================
 //                  IMPORTS & CONFIG
 // ========================================================
+const mongoose = require('mongoose');
 const { connectToMongoDB, closeMongoDBConnection } = require('./mongodb-config');
 const config = require('./config');
 
@@ -887,17 +888,44 @@ app.get('/api/admin/timetable', async (req, res) => {
   try {
     const { branch, year, section, semester } = req.query;
     
+    console.log('[BACKEND] Admin timetable request:', { branch, year, section, semester });
+    
     if (!branch || !year || !section) {
+      console.log('[BACKEND] Missing required fields');
       return res.status(400).json({ 
         success: false, 
         message: 'Branch, year, and section are required' 
       });
     }
     
-    const filter = { branch, year, section };
-    if (semester) filter.semester = semester;
+    // Convert year to number and validate
+    const yearNum = parseInt(year);
+    if (isNaN(yearNum) || yearNum < 1 || yearNum > 4) {
+      console.log('[BACKEND] Invalid year value:', year);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid year value. Must be between 1 and 4.' 
+      });
+    }
+    
+    const filter = { branch, year: yearNum, section };
+    console.log('[BACKEND] Semester value:', semester, 'Type:', typeof semester, 'Length:', semester ? semester.length : 'undefined');
+    
+    if (semester && semester.trim()) {
+      filter.semester = semester.trim();
+      console.log('[BACKEND] Added semester filter:', semester.trim());
+    } else {
+      console.log('[BACKEND] No semester filter added - semester is empty or undefined');
+    }
+    
+    console.log('[BACKEND] Final filter:', filter);
     
     const timetable = await Timetable.find(filter).sort({ day: 1, startTime: 1 });
+    
+    console.log('[BACKEND] Found timetable entries:', timetable.length);
+    if (timetable.length > 0) {
+      console.log('[BACKEND] Sample entry:', timetable[0]);
+    }
     
     res.json({ 
       success: true, 
@@ -916,43 +944,506 @@ app.get('/api/admin/timetable', async (req, res) => {
 // Bulk update timetable for admin
 app.post('/api/admin/timetable/bulk-update', async (req, res) => {
   try {
-    const { branch, year, section, semester, updates } = req.body;
-    
-    if (!branch || !year || !section || !updates || !Array.isArray(updates)) {
-      return res.status(400).json({ 
+    // Check if database is connected
+    if (!mongoose.connection.readyState) {
+      console.error('[BACKEND] Database not connected');
+      return res.status(500).json({ 
         success: false, 
-        message: 'Invalid request data' 
+        message: 'Database connection error. Please try again.' 
       });
     }
     
-    const filter = { branch, year, section };
-    if (semester) filter.semester = semester;
+    // Check if mongoose is available
+    if (typeof mongoose === 'undefined') {
+      console.error('[BACKEND] Mongoose not available');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database system error. Please try again.' 
+      });
+    }
+    
+    // Check if Timetable model is available
+    if (typeof Timetable === 'undefined') {
+      console.error('[BACKEND] Timetable model not available');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'System configuration error. Please contact administrator.' 
+      });
+    }
+    
+    // Check if Timetable model has required methods
+    if (typeof Timetable.deleteMany !== 'function' || typeof Timetable.insertMany !== 'function') {
+      console.error('[BACKEND] Timetable model missing required methods');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'System configuration error. Please contact administrator.' 
+      });
+    }
+    
+    const { branch, year, section, semester, updates } = req.body;
+    
+    console.log('[BACKEND] Timetable update request:', { branch, year, section, semester, updatesCount: updates?.length });
+    
+    // Check request body size
+    const requestSize = JSON.stringify(req.body).length;
+    if (requestSize > 1024 * 1024) { // 1MB limit
+      console.error('[BACKEND] Request body too large:', requestSize, 'bytes');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Request data too large. Please reduce the number of timetable entries.' 
+      });
+    }
+    
+    // Check if request body is properly formatted
+    if (!req.body || typeof req.body !== 'object') {
+      console.error('[BACKEND] Invalid request body format');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid request format. Please check your data and try again.' 
+      });
+    }
+    
+    // Check if request body has required properties
+    const requiredProps = ['branch', 'year', 'section', 'updates'];
+    const missingProps = requiredProps.filter(prop => !(prop in req.body));
+    
+    if (missingProps.length > 0) {
+      console.error('[BACKEND] Missing required properties:', missingProps);
+      return res.status(400).json({ 
+        success: false, 
+        message: `Missing required properties: ${missingProps.join(', ')}` 
+      });
+    }
+    
+    // Check if request body properties have valid values
+    const invalidProps = [];
+    if (req.body.branch === null || req.body.branch === undefined) invalidProps.push('branch');
+    if (req.body.year === null || req.body.year === undefined) invalidProps.push('year');
+    if (req.body.section === null || req.body.section === undefined) invalidProps.push('section');
+    if (req.body.updates === null || req.body.updates === undefined) invalidProps.push('updates');
+    
+    if (invalidProps.length > 0) {
+      console.error('[BACKEND] Invalid property values:', invalidProps);
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid values for properties: ${invalidProps.join(', ')}` 
+      });
+    }
+    
+    if (!branch || !year || !section || !updates || !Array.isArray(updates)) {
+      console.log('[BACKEND] Validation failed:', { branch, year, section, updates: !!updates, isArray: Array.isArray(updates) });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid request data. Please ensure all required fields are provided.' 
+      });
+    }
+    
+    // Additional validation for updates array
+    if (updates.length === 0) {
+      console.log('[BACKEND] Empty updates array');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No timetable data provided. Please fill in at least one timetable entry.' 
+      });
+    }
+    
+    // Check if updates array contains valid objects
+    if (!updates.every(update => update && typeof update === 'object')) {
+      console.error('[BACKEND] Invalid update objects in array');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid timetable data format. Please check your input and try again.' 
+      });
+    }
+    
+    // Check if updates array objects have required properties
+    const requiredUpdateProps = ['subject', 'day', 'startTime', 'facultyId', 'room'];
+    const invalidUpdates = updates.filter(update => {
+      return !requiredUpdateProps.every(prop => prop in update);
+    });
+    
+    if (invalidUpdates.length > 0) {
+      console.error('[BACKEND] Updates missing required properties:', invalidUpdates);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Some timetable entries are missing required fields. Please check all entries have subject, day, time, faculty ID, and room.' 
+      });
+    }
+    
+    // Check if updates array objects have valid property values
+    const updatesWithInvalidValues = updates.filter(update => {
+      return requiredUpdateProps.some(prop => {
+        const value = update[prop];
+        return value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+      });
+    });
+    
+    if (updatesWithInvalidValues.length > 0) {
+      console.error('[BACKEND] Updates with invalid property values:', updatesWithInvalidValues);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Some timetable entries have empty or invalid values. Please ensure all required fields are properly filled.' 
+      });
+    }
+    
+    // Convert year to number and validate
+    const yearNum = parseInt(year);
+    if (isNaN(yearNum) || yearNum < 1 || yearNum > 4) {
+      console.log('[BACKEND] Invalid year value:', { year, yearNum });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid year value. Must be between 1 and 4.' 
+      });
+    }
+    
+    // Validate branch and section
+    if (!branch.trim() || !section.trim()) {
+      console.log('[BACKEND] Invalid branch or section:', { branch, section });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid branch or section value.' 
+      });
+    }
+    
+    // Validate branch and section values against allowed values
+    const allowedBranches = ['CSE', 'IT', 'ECE', 'AIML', 'DS', 'EEE', 'MECH', 'CIVIL', 'MCA'];
+    const allowedSections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    
+    if (!allowedBranches.includes(branch.trim())) {
+      console.log('[BACKEND] Invalid branch value:', branch);
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid branch value. Allowed values: ${allowedBranches.join(', ')}` 
+      });
+    }
+    
+    if (!allowedSections.includes(section.trim())) {
+      console.log('[BACKEND] Invalid section value:', section);
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid section value. Allowed values: ${allowedSections.join(', ')}` 
+      });
+    }
+    
+    // Validate semester value if provided
+    if (semester && semester.trim()) {
+      const allowedSemesters = ['1', '2', '3', '4', '5', '6', '7', '8'];
+      if (!allowedSemesters.includes(semester.trim())) {
+        console.log('[BACKEND] Invalid semester value:', semester);
+        return res.status(400).json({ 
+          success: false, 
+          message: `Invalid semester value. Allowed values: ${allowedSemesters.join(', ')}` 
+        });
+      }
+    }
+    
+    const filter = { branch: branch.trim(), year: yearNum, section: section.trim() };
+    if (semester && semester.trim()) filter.semester = semester.trim();
+    
+    console.log('[BACKEND] Deleting existing entries with filter:', filter);
     
     // Delete existing timetable entries
-    await Timetable.deleteMany(filter);
+    try {
+      await Timetable.deleteMany(filter);
+      console.log('[BACKEND] Existing entries deleted successfully');
+    } catch (deleteError) {
+      console.error('[BACKEND] Error deleting existing entries:', deleteError);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Failed to clear existing timetable. Please try again.' 
+      });
+    }
+    
+    // Validate each update entry
+    const validUpdates = updates.filter(update => {
+      if (!update.subject || !update.subject.trim()) {
+        console.log('[BACKEND] Skipping entry with empty subject:', update);
+        return false;
+      }
+      if (!update.day || !update.startTime) {
+        console.log('[BACKEND] Skipping entry with missing day or startTime:', update);
+        return false;
+      }
+      if (!update.facultyId || !update.facultyId.trim()) {
+        console.log('[BACKEND] Skipping entry with empty facultyId:', update);
+        return false;
+      }
+      if (!update.room || !update.room.trim()) {
+        console.log('[BACKEND] Skipping entry with empty room:', update);
+        return false;
+      }
+      
+      // Validate day format (should be capitalized properly)
+      const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const dayLower = update.day.toLowerCase();
+      if (!validDays.includes(dayLower)) {
+        console.log('[BACKEND] Skipping entry with invalid day:', update);
+        return false;
+      }
+      
+      // Validate time format
+      const validTimes = ['9:30', '10:20', '11:10', '12:00', '1:50', '2:40', '3:30'];
+      if (!validTimes.includes(update.startTime)) {
+        console.log('[BACKEND] Skipping entry with invalid time:', update);
+        return false;
+      }
+      
+      // Validate faculty ID format (should not be empty and should be reasonable length)
+      if (update.facultyId.length < 2 || update.facultyId.length > 50) {
+        console.log('[BACKEND] Skipping entry with invalid faculty ID length:', update);
+        return false;
+      }
+      
+      // Validate room format (should not be empty and should be reasonable length)
+      if (update.room.length < 1 || update.room.length > 20) {
+        console.log('[BACKEND] Skipping entry with invalid room length:', update);
+        return false;
+      }
+      
+      return true;
+    });
+    
+    if (validUpdates.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No valid timetable entries found. Please ensure all entries have subject, day, faculty ID, room, and valid day/time format.' 
+      });
+    }
+    
+    console.log('[BACKEND] Valid updates count:', validUpdates.length);
+    
+    // Check if we have a reasonable number of entries (max 7 periods * 6 days = 42)
+    if (validUpdates.length > 42) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Too many timetable entries. Maximum allowed is 42 entries (7 periods × 6 days).' 
+      });
+    }
+    
+    // Check for duplicate entries (same day, time, and subject)
+    const duplicateCheck = new Set();
+    const duplicates = [];
+    
+    validUpdates.forEach(update => {
+      const key = `${update.day}-${update.startTime}-${update.subject}`;
+      if (duplicateCheck.has(key)) {
+        duplicates.push(key);
+      } else {
+        duplicateCheck.add(key);
+      }
+    });
+    
+    if (duplicates.length > 0) {
+      console.log('[BACKEND] Duplicate entries detected:', duplicates);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Duplicate timetable entries detected. Please check for duplicate subjects in the same time slot.' 
+      });
+    }
+    
+    // Check for conflicting entries (same day and time but different subjects)
+    const timeSlotCheck = new Map();
+    const conflicts = [];
+    
+    validUpdates.forEach(update => {
+      const timeSlot = `${update.day}-${update.startTime}`;
+      if (timeSlotCheck.has(timeSlot)) {
+        const existingSubject = timeSlotCheck.get(timeSlot);
+        if (existingSubject !== update.subject) {
+          conflicts.push(`${update.day} ${update.startTime}: ${existingSubject} vs ${update.subject}`);
+        }
+      } else {
+        timeSlotCheck.set(timeSlot, update.subject);
+      }
+    });
+    
+    if (conflicts.length > 0) {
+      console.log('[BACKEND] Time slot conflicts detected:', conflicts);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Time slot conflicts detected. Multiple subjects cannot be scheduled at the same time on the same day.' 
+      });
+    }
     
     // Insert new entries
-    const newEntries = updates.map(update => ({
+    const newEntries = validUpdates.map(update => ({
       ...update,
-      branch,
-      year,
-      section,
-      semester: semester || null
+      branch: branch.trim(),
+      year: yearNum,
+      section: section.trim(),
+      semester: (semester && semester.trim()) ? semester.trim() : null
     }));
     
-    const result = await Timetable.insertMany(newEntries);
-    
-    res.json({ 
-      success: true, 
-      message: `Timetable updated successfully. ${result.length} entries created.`,
-      count: result.length
+    // Final validation of new entries
+    const finalValidEntries = newEntries.filter(entry => {
+      return entry.branch && entry.year && entry.section && entry.subject && entry.day && entry.startTime && entry.facultyId && entry.room;
     });
+    
+    // Log validation results
+    console.log('[BACKEND] Final validation results:', {
+      original: newEntries.length,
+      final: finalValidEntries.length,
+      sample: finalValidEntries[0]
+    });
+    
+    if (finalValidEntries.length !== newEntries.length) {
+      console.log('[BACKEND] Some entries failed final validation:', { original: newEntries.length, final: finalValidEntries.length });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Some timetable entries failed validation. Please check all fields are properly filled.' 
+      });
+    }
+    
+    // Additional validation: ensure no empty strings
+    const hasEmptyFields = finalValidEntries.some(entry => {
+      return Object.values(entry).some(value => 
+        value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
+      );
+    });
+    
+    if (hasEmptyFields) {
+      console.log('[BACKEND] Some entries have empty fields after validation');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Some timetable entries have empty fields. Please ensure all fields are properly filled.' 
+      });
+    }
+    
+    // Additional validation: ensure data types are correct
+    const hasInvalidTypes = finalValidEntries.some(entry => {
+      return typeof entry.branch !== 'string' || 
+             typeof entry.year !== 'number' || 
+             typeof entry.section !== 'string' || 
+             typeof entry.subject !== 'string' || 
+             typeof entry.day !== 'string' || 
+             typeof entry.startTime !== 'string' || 
+             typeof entry.facultyId !== 'string' || 
+             typeof entry.room !== 'string' ||
+             (entry.semester !== null && typeof entry.semester !== 'string');
+    });
+    
+    if (hasInvalidTypes) {
+      console.log('[BACKEND] Some entries have invalid data types');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Some timetable entries have invalid data types. Please check your input and try again.' 
+      });
+    }
+    
+    console.log('[BACKEND] Inserting new entries:', finalValidEntries.length);
+    
+    try {
+      const result = await Timetable.insertMany(finalValidEntries);
+      
+      console.log('[BACKEND] Timetable updated successfully:', result.length, 'entries created');
+      
+      res.json({ 
+        success: true, 
+        message: `Timetable updated successfully. ${result.length} entries created.`,
+        count: result.length
+      });
+    } catch (dbError) {
+      console.error('[BACKEND] Database error during insert:', dbError);
+      
+      // If insert fails, try to restore the deleted entries (if any existed)
+      if (dbError.code === 11000) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Duplicate entry detected. Please check for duplicate subjects in the same time slot.' 
+        });
+      }
+      
+      // Handle other database errors
+      if (dbError.name === 'ValidationError') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Data validation error. Please check all fields are properly formatted.' 
+        });
+      }
+      
+      if (dbError.name === 'CastError') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Data type error. Please check all fields have correct data types.' 
+        });
+      }
+      
+          // Handle connection errors
+    if (dbError.name === 'MongoNetworkError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.' 
+      });
+    }
+    
+    // Handle timeout errors
+    if (dbError.name === 'MongoTimeoutError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database operation timed out. Please try again.' 
+      });
+    }
+    
+    // Handle server selection errors
+    if (dbError.name === 'MongoServerSelectionError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database server unavailable. Please try again later.' 
+      });
+    }
+      
+      throw dbError; // Re-throw to be caught by outer catch block
+    }
     
   } catch (error) {
     console.error('Error updating admin timetable:', error);
+    
+    // Handle specific error types
+    if (error.name === 'MongoError' || error.name === 'MongoServerError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database server error. Please try again later.' 
+      });
+    }
+    
+    if (error.name === 'TypeError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Data processing error. Please check your input and try again.' 
+      });
+    }
+    
+    if (error.name === 'ReferenceError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'System error. Please refresh the page and try again.' 
+      });
+    }
+    
+    if (error.name === 'SyntaxError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Data format error. Please check your input and try again.' 
+      });
+    }
+    
+    if (error.name === 'RangeError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Data range error. Please check your input values and try again.' 
+      });
+    }
+    
+    if (error.name === 'URIError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Data encoding error. Please check your input and try again.' 
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to update timetable' 
+      message: 'Failed to update timetable. Please try again.' 
     });
   }
 });
@@ -1635,258 +2126,105 @@ app.post('/api/admin/attendance/summary', async (req, res) => {
   }
 });
 
-// Download attendance summary as Excel
+// Download attendance summary as Excel (Updated for specific format)
 app.post('/api/admin/attendance/summary/excel', async (req, res) => {
   try {
-    const { date, fromDate, toDate, periods, branch, year, section, semester, branches, years, sections, semesters } = req.body;
-    
-    console.log('[BACKEND] Admin attendance Excel download request:', req.body);
-    
-    // Build query based on provided filters
-    const query = {};
-    
-    // Handle both single values (backwards compatibility) and arrays (new checkbox system)
-    if (branches && Array.isArray(branches) && branches.length > 0) {
-      query.branch = { $in: branches };
-    } else if (branch && branch !== 'All') {
-      query.branch = branch;
-    }
-    
-    if (years && Array.isArray(years) && years.length > 0) {
-      query.year = { $in: years.map(y => parseInt(y)) };
-    } else if (year && year !== 'All') {
-      query.year = parseInt(year);
-    }
-    
-    if (sections && Array.isArray(sections) && sections.length > 0) {
-      query.section = { $in: sections };
-    } else if (section && section !== 'All') {
-      query.section = section;
-    }
-    
-    if (semesters && Array.isArray(semesters) && semesters.length > 0) {
-      query.semester = { $in: semesters };
-    } else if (semester && semester !== 'All') {
-      query.semester = semester;
-    }
-    
-    // Get students based on filters
-    const students = await User.find(query).select('roll name branch year section semester');
-    
-    if (students.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No students found with the selected filters'
-      });
-    }
-    
-    // Build date query
-    let dateQuery = {};
+    const { date, fromDate, toDate, periods, branches, years, sections, semesters } = req.body;
+
+    const reportDate = date || new Date().toISOString().split('T')[0];
+
+    // 1. Fetch required data from database
+    const studentQuery = {};
+    if (branches && branches.length > 0) studentQuery.branch = { $in: branches };
+    if (years && years.length > 0) studentQuery.year = { $in: years.map(y => parseInt(y)) };
+    if (sections && sections.length > 0) studentQuery.section = { $in: sections };
+    if (semesters && semesters.length > 0) studentQuery.semester = { $in: semesters };
+
+    const students = await User.find(studentQuery).select('roll name branch year section').lean();
+
+    const attendanceQuery = { period: { $in: periods } };
     if (date) {
-      dateQuery.date = date;
+      attendanceQuery.date = date;
     } else if (fromDate && toDate) {
-      dateQuery.date = { $gte: fromDate, $lte: toDate };
+      attendanceQuery.date = { $gte: fromDate, $lte: toDate };
     }
-    
-    // Validate periods array
-    if (!Array.isArray(periods) || periods.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Periods array is required and must not be empty'
-      });
-    }
-    
-    // Get attendance records for the specified periods and dates
-    const attendanceQuery = {
-      ...dateQuery,
-      period: { $in: periods }
-    };
-    
-    const attendanceRecords = await Attendance.find(attendanceQuery);
-    console.log(`[BACKEND] Found ${attendanceRecords.length} attendance records for ${periods.length} periods`);
-    
-    // Group students by class (branch-year-section-semester combination)
+    const presentRecords = await Attendance.find(attendanceQuery).select('studentRoll').lean();
+    const presentRolls = new Set(presentRecords.map(r => r.studentRoll));
+
+    // 2. Process data and prepare for Excel
     const classGroups = {};
     students.forEach(student => {
-      const classKey = `${student.branch}-${student.year}-${student.section}-${student.semester}`;
-      if (!classGroups[classKey]) {
-        classGroups[classKey] = {
-          branch: student.branch,
-          year: student.year,
-          section: student.section,
-          semester: student.semester,
-          students: []
-        };
+      const key = `${student.year} ${student.branch}-${student.section}`;
+      if (!classGroups[key]) {
+        classGroups[key] = { students: [] };
       }
-      classGroups[classKey].students.push(student);
+      classGroups[key].students.push(student.roll);
     });
-
-    // Prepare data for Excel - Summary Table Format
+    
     const excelData = [];
+    const summaryRows = [];
+    const absenteeRows = [];
+    let totalStrength = 0, totalPresent = 0, totalAbsentees = 0;
     
-    // Add title row (will be merged across columns A-F)
-    excelData.push([`Attendance Report - ${date || `${fromDate} to ${toDate}`}`]);
-    excelData.push([]); // Empty row for spacing
-    
-    // Add summary table headers
-    excelData.push(['S.No', 'Class', 'Total Strei', 'Total Pres', 'No.of Abs', 'Attendance (%)']);
-    
-    let totalStrength = 0;
-    let totalPresent = 0;
-    let totalAbsentees = 0;
-    let serialNumber = 1;
-    
-    // Process each class
-    for (const classKey in classGroups) {
-      const classInfo = classGroups[classKey];
-      const classStudents = classInfo.students;
-      const classTotalStrength = classStudents.length;
-      
-      // Count present students for this class across all periods
-      let classPresentCount = 0;
-      const classAbsentRolls = [];
-      
-      classStudents.forEach(student => {
-        let studentPresentInAnyPeriod = false;
-        periods.forEach(period => {
-          const hasAttendance = attendanceRecords.some(record => 
-            record.studentRoll === student.roll && 
-            record.period === period
-          );
-          if (hasAttendance) {
-            studentPresentInAnyPeriod = true;
-          }
-        });
-        
-        if (studentPresentInAnyPeriod) {
-          classPresentCount++;
-        } else {
-          classAbsentRolls.push(student.roll);
-        }
-      });
-      
-      const classAbsentCount = classTotalStrength - classPresentCount;
-      const classAttendancePercentage = Math.round((classPresentCount / classTotalStrength) * 100);
-      
-      // Add class summary row
-      excelData.push([
-        serialNumber,
-        `${classInfo.year} ${classInfo.branch}-${classInfo.section}`,
-        classTotalStrength,
-        classPresentCount,
-        classAbsentCount,
-        classAttendancePercentage
-      ]);
-      
-      // Update totals
-      totalStrength += classTotalStrength;
-      totalPresent += classPresentCount;
-      totalAbsentees += classAbsentCount;
-      
-      serialNumber++;
-    }
-    
-    // Add totals row
-    excelData.push([]); // Empty row for spacing
-    excelData.push([
-      'Total',
-      '',
-      totalStrength,
-      totalPresent,
-      totalAbsentees,
-      Math.round((totalPresent / totalStrength) * 100)
-    ]);
-    
-    // Add empty row for spacing
-    excelData.push([]);
-    
-    // Add absentee roll numbers section header
-    excelData.push(['ABSENTEES ROLL NO:']);
-    
-    // Add absentee roll numbers for each class
-    serialNumber = 1;
-    for (const classKey in classGroups) {
-      const classInfo = classGroups[classKey];
-      const classStudents = classInfo.students;
-      
-      // Count absent students for this class
-      const classAbsentRolls = [];
-      classStudents.forEach(student => {
-        let studentPresentInAnyPeriod = false;
-        periods.forEach(period => {
-          const hasAttendance = attendanceRecords.some(record => 
-            record.studentRoll === student.roll && 
-            record.period === period
-          );
-          if (hasAttendance) {
-            studentPresentInAnyPeriod = true;
-          }
-        });
-        
-        if (!studentPresentInAnyPeriod) {
-          classAbsentRolls.push(student.roll);
-        }
-      });
-      
-      if (classAbsentRolls.length > 0) {
-        // Add absentee row with S.No, Class, and roll numbers
-        excelData.push([
-          serialNumber,
-          `${classInfo.year} ${classInfo.branch}-${classInfo.section}`,
-          classAbsentRolls.join(','),
-          '', '', '' // Empty cells for remaining columns
-        ]);
+    // Add Summary Table Header
+    summaryRows.push(['S.No.', 'Class', 'Total Strength', 'Total Present', 'No. of Absentees', `Attendance (%)`]);
+
+    let sno = 1;
+    const sortedClassKeys = Object.keys(classGroups).sort();
+
+    for (const className of sortedClassKeys) {
+      const group = classGroups[className];
+      const strength = group.students.length;
+      const presentCount = group.students.filter(roll => presentRolls.has(roll)).length;
+      const absentCount = strength - presentCount;
+      const percentage = strength > 0 ? Math.round((presentCount / strength) * 100) : 0;
+
+      // Add row to summary table
+      summaryRows.push([sno, className, strength, presentCount, absentCount, percentage]);
+
+      // Add absentees to their own list
+      const absentRolls = group.students.filter(roll => !presentRolls.has(roll));
+      if (absentRolls.length > 0) {
+        absenteeRows.push(['ABSENTEES ROLL NO :']);
+        absenteeRows.push([sno, className, absentRolls.join(',')]);
       }
       
-      serialNumber++;
+      totalStrength += strength;
+      totalPresent += presentCount;
+      totalAbsentees += absentCount;
+      sno++;
     }
-    
-    // Create workbook and worksheet
+
+    // Add Totals row to summary
+    const totalPercentage = totalStrength > 0 ? Math.round((totalPresent / totalStrength) * 100) : 0;
+    summaryRows.push(['Total', '', totalStrength, totalPresent, totalAbsentees, totalPercentage]);
+
+    // 3. Combine all parts into the final structure for the Excel sheet
+    excelData.push(['', '', '', '', '', reportDate]); // Date header
+    excelData.push([]); // Spacer row
+    excelData.push(...summaryRows);
+    excelData.push([]); // Spacer row
+    excelData.push([]); // Spacer row
+    excelData.push(...absenteeRows);
+
+    // 4. Generate and send the Excel file
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.aoa_to_sheet(excelData);
+
+    // Set column widths for better appearance
+    worksheet['!cols'] = [ { wch: 8 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 15 } ];
     
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Report');
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Report');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     
-    // Set column widths for better formatting
-    const columnWidths = [
-      { wch: 8 },   // S.No
-      { wch: 20 },  // Class
-      { wch: 15 },  // Total Strei/Total Pres/No.of Abs
-      { wch: 15 },  // Total Pres
-      { wch: 15 },  // No.of Abs
-      { wch: 15 }   // Attendance (%)
-    ];
-    worksheet['!cols'] = columnWidths;
-    
-    // Add merged cells for title (merge A3:F3)
-    if (!worksheet['!merges']) worksheet['!merges'] = [];
-    worksheet['!merges'].push({ s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }); // A3:F3
-    
-    // Generate Excel buffer
-    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-    
-    console.log(`[BACKEND] Generated Excel file with ${excelData.length} rows, buffer size: ${excelBuffer.length} bytes`);
-    
-    // Generate filename with date
-    const fileName = date ? 
-      `attendance_summary_${date}.xlsx` : 
-      `attendance_summary_${fromDate}_to_${toDate}.xlsx`;
-    
-    // Set proper headers for Excel file
+    res.setHeader('Content-Disposition', `attachment; filename="Attendance-Report-${reportDate}.xlsx"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.setHeader('Content-Length', excelBuffer.length);
-    
-    // Send the Excel file
-    res.send(excelBuffer);
-    
+    res.send(buffer);
+
   } catch (error) {
-    console.error('[BACKEND] Error generating admin attendance Excel:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate attendance Excel'
-    });
+    console.error('[BACKEND] Error generating custom Excel summary:', error);
+    res.status(500).json({ message: 'Failed to generate Excel file.' });
   }
 });
 
@@ -1895,7 +2233,7 @@ app.post('/api/admin/attendance/summary/excel', async (req, res) => {
 // ========================================================
 async function initializeServer() {
   try {
-        await connectToMongoDB(); // Connect using Mongoose
+    await connectToMongoDB(); // Connect using Mongoose
     server.listen(PORT, () => {
       config.logConfig();
       console.log(`🚀 ClassSync Server running on port ${PORT}`);
