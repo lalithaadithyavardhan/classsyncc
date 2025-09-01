@@ -10,6 +10,7 @@ if (process.env.NODE_ENV !== 'production') {
 // ========================================================
 const express = require('express');
 const bodyParser = require('body-parser');
+const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const path = require('path');
 const http = require('http');
@@ -852,18 +853,8 @@ app.get('/api/student/attendance/summary/:roll', async (req, res) => {
     }
     
     for (const subject of subjects) {
-      // Find attendance records for this subject by matching dates with timetable
-      const subjectAttendance = attendanceRecords.filter(record => {
-        // Find timetable entries for this subject
-        const subjectTimetableEntries = timetable.filter(t => t.subject === subject);
-        
-        // Check if the attendance date matches any of the subject's timetable dates
-        return subjectTimetableEntries.some(timetableEntry => {
-          // For now, we'll consider all attendance records as potentially related to this subject
-          // In a more sophisticated system, you might want to link attendance to specific subjects via session IDs
-          return true;
-        });
-      });
+      // Find attendance records for this specific subject
+      const subjectAttendance = attendanceRecords.filter(record => record.subject === subject);
       
       const subjectTotal = subjectAttendance.length;
       const subjectAttended = subjectAttendance.filter(record => 
@@ -896,7 +887,49 @@ app.get('/api/student/attendance/summary/:roll', async (req, res) => {
     });
   }
 });
+// Add this new endpoint to backend-server.js
+app.post('/api/faculty/attendance/submit-roster', async (req, res) => {
+  try {
+      const { classId, date, periods, records } = req.body;
+      const cls = await Class.findById(classId);
+      if (!cls) return res.status(404).json({ success: false, message: 'Class not found.' });
 
+      const bulkOps = [];
+      for (const record of records) {
+          for (const period of periods) {
+              bulkOps.push({
+                  updateOne: {
+                      filter: { studentRoll: record.roll, date, period },
+                      update: {
+                          $set: {
+                              studentRoll: record.roll,
+                              date,
+                              period,
+                              status: record.status,
+                              subject: cls.subject,
+                              branch: cls.branch,
+                              year: cls.year,
+                              section: cls.section,
+                              facultyId: cls.facultyId,
+                              method: 'manual_roster'
+                          }
+                      },
+                      upsert: true
+                  }
+              });
+          }
+      }
+
+      if (bulkOps.length > 0) {
+          await Attendance.bulkWrite(bulkOps);
+      }
+      
+      res.json({ success: true, message: 'Roster submitted.' });
+  } catch (error) {
+      console.error('Error submitting roster:', error);
+      res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
 // ========================================================
 //                  ADMIN TIMETABLE ENDPOINTS
 // ========================================================
@@ -2005,160 +2038,28 @@ app.get('/api/faculty/attendance/session-status', async (req, res) => {
 // ========================================================
 
 // Get attendance summary for admin
-app.post('/api/admin/attendance/summary', async (req, res) => {
-  try {
-    const { date, fromDate, toDate, periods, branch, year, section, semester, branches, years, sections, semesters } = req.body;
-    
-    console.log('[BACKEND] Admin attendance summary request:', req.body);
-    
-    // Build query based on provided filters
-    const query = {};
-    
-    // Handle both single values (backwards compatibility) and arrays (new checkbox system)
-    if (branches && Array.isArray(branches) && branches.length > 0) {
-      query.branch = { $in: branches };
-    } else if (branch && branch !== 'All') {
-      query.branch = branch;
-    }
-    
-    if (years && Array.isArray(years) && years.length > 0) {
-      query.year = { $in: years.map(y => parseInt(y)) };
-    } else if (year && year !== 'All') {
-      query.year = parseInt(year);
-    }
-    
-    if (sections && Array.isArray(sections) && sections.length > 0) {
-      query.section = { $in: sections };
-    } else if (section && section !== 'All') {
-      query.section = section;
-    }
-    
-    if (semesters && Array.isArray(semesters) && semesters.length > 0) {
-      query.semester = { $in: semesters };
-    } else if (semester && semester !== 'All') {
-      query.semester = semester;
-    }
-    
-    // Get students based on filters
-    const students = await User.find(query).select('roll name branch year section semester');
-    console.log(`[BACKEND] Found ${students.length} students matching filters`);
-    
-    if (students.length === 0) {
-      return res.json({
-        success: true,
-        summary: [],
-        absentees: [],
-        message: 'No students found with the selected filters'
-      });
-    }
-    
-    // Build date query
-    let dateQuery = {};
-    if (date) {
-      dateQuery.date = date;
-    } else if (fromDate && toDate) {
-      dateQuery.date = { $gte: fromDate, $lte: toDate };
-    }
-    
-    // Get attendance records for the specified periods and dates
-    const attendanceQuery = {
-      ...dateQuery,
-      period: { $in: periods }
-    };
-    
-    const attendanceRecords = await Attendance.find(attendanceQuery);
-    console.log(`[BACKEND] Found ${attendanceRecords.length} attendance records`);
-    
-    // Calculate summary for each class
-    const classSummary = {};
-    
-    students.forEach(student => {
-      const classKey = `${student.branch}-${student.year}-${student.section}-${student.semester}`;
-      if (!classSummary[classKey]) {
-        classSummary[classKey] = {
-          className: `${student.branch} ${student.year} ${student.section} ${student.semester}`,
-          totalStrength: 0,
-          totalPresent: 0,
-          totalAbsentees: 0,
-          attendancePercent: 0
-        };
-      }
-      classSummary[classKey].totalStrength++;
-    });
-    
-    // Count present students
-    attendanceRecords.forEach(record => {
-      const student = students.find(s => s.roll === record.studentRoll);
-      if (student) {
-        const classKey = `${student.branch}-${student.year}-${student.section}-${student.semester}`;
-        if (classSummary[classKey]) {
-          classSummary[classKey].totalPresent++;
-        }
-      }
-    });
-    
-    // Calculate absentees and percentages
-    const summary = Object.values(classSummary).map((cls, index) => {
-      cls.totalAbsentees = cls.totalStrength - cls.totalPresent;
-      cls.attendancePercent = cls.totalStrength > 0 ? Math.round((cls.totalPresent / cls.totalStrength) * 100) : 0;
-      cls.sno = index + 1;
-      return cls;
-    });
-    
-    // Get absentees list
-    const absentees = [];
-    students.forEach(student => {
-      const hasAttendance = attendanceRecords.some(record => 
-        record.studentRoll === student.roll && 
-        periods.includes(record.period)
-      );
-      
-      if (!hasAttendance) {
-        absentees.push({
-          roll: student.roll,
-          name: student.name,
-          branch: student.branch,
-          year: student.year,
-          section: student.section,
-          semester: student.semester
-        });
-      }
-    });
-    
-    console.log(`[BACKEND] Generated summary with ${summary.length} classes and ${absentees.length} absentees`);
-    
-    res.json({
-      success: true,
-      summary,
-      absentees,
-      totalStudents: students.length,
-      totalRecords: attendanceRecords.length
-    });
-    
-  } catch (error) {
-    console.error('[BACKEND] Error generating admin attendance summary:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate attendance summary'
-    });
-  }
-});
+// Replace this entire function in backend-server.js
 
-// Download attendance summary as Excel (Updated for specific format)
+// Replace this entire function in backend-server.js
+
+// Replace this entire function in backend-server.js
+
 app.post('/api/admin/attendance/summary/excel', async (req, res) => {
   try {
     const { date, fromDate, toDate, periods, branches, years, sections, semesters } = req.body;
-
     const reportDate = date || new Date().toISOString().split('T')[0];
 
-    // 1. Fetch required data from database
+    // 1. Fetch all necessary data from the database
     const studentQuery = {};
     if (branches && branches.length > 0) studentQuery.branch = { $in: branches };
     if (years && years.length > 0) studentQuery.year = { $in: years.map(y => parseInt(y)) };
     if (sections && sections.length > 0) studentQuery.section = { $in: sections };
     if (semesters && semesters.length > 0) studentQuery.semester = { $in: semesters };
-
-    const students = await User.find(studentQuery).select('roll name branch year section').lean();
+    
+    const students = await User.find(studentQuery).select('roll name branch year section semester').lean();
+    if (students.length === 0) {
+      return res.status(404).json({ message: 'No students found for the selected filters.' });
+    }
 
     const attendanceQuery = { period: { $in: periods } };
     if (date) {
@@ -2166,66 +2067,72 @@ app.post('/api/admin/attendance/summary/excel', async (req, res) => {
     } else if (fromDate && toDate) {
       attendanceQuery.date = { $gte: fromDate, $lte: toDate };
     }
-    const presentRecords = await Attendance.find(attendanceQuery).select('studentRoll').lean();
-    const presentRolls = new Set(presentRecords.map(r => r.studentRoll));
+    
+    // Get a unique set of students who were present
+    const presentStudentRolls = new Set(
+      await Attendance.find(attendanceQuery).distinct('studentRoll')
+    );
 
-    // 2. Process data and prepare for Excel
+    // 2. Group students by class to process data
     const classGroups = {};
     students.forEach(student => {
-      const key = `${student.year} ${student.branch}-${student.section}`;
-      if (!classGroups[key]) {
-        classGroups[key] = { students: [] };
+      const classKey = `${student.year} ${student.branch}-${student.section}`;
+      if (!classGroups[classKey]) {
+        classGroups[classKey] = { studentRolls: [] };
       }
-      classGroups[key].students.push(student.roll);
+      classGroups[classKey].studentRolls.push(student.roll);
     });
-    
+
+    // 3. Prepare the data for the two sections of the Excel report
     const excelData = [];
     const summaryRows = [];
     const absenteeRows = [];
-    let totalStrength = 0, totalPresent = 0, totalAbsentees = 0;
-    
-    // Add Summary Table Header
-    summaryRows.push(['S.No.', 'Class', 'Total Strength', 'Total Present', 'No. of Absentees', `Attendance (%)`]);
+    let grandTotalStrength = 0, grandTotalPresent = 0, grandTotalAbsentees = 0;
 
+    // Add headers for the summary table
+    summaryRows.push(['', '', '', '', '', reportDate]); // Date in top-right
+    summaryRows.push([]); // Spacer
+    summaryRows.push(['S.No.', 'Class', 'Total Strength', 'Total Present', 'No. of Absentees', 'Attendance (%)']);
+    
     let sno = 1;
     const sortedClassKeys = Object.keys(classGroups).sort();
 
     for (const className of sortedClassKeys) {
       const group = classGroups[className];
-      const strength = group.students.length;
-      const presentCount = group.students.filter(roll => presentRolls.has(roll)).length;
+      const strength = group.studentRolls.length;
+      const presentCount = group.studentRolls.filter(roll => presentStudentRolls.has(roll)).length;
       const absentCount = strength - presentCount;
       const percentage = strength > 0 ? Math.round((presentCount / strength) * 100) : 0;
 
-      // Add row to summary table
+      // Add a row to the main summary table
       summaryRows.push([sno, className, strength, presentCount, absentCount, percentage]);
 
-      // Add absentees to their own list
-      const absentRolls = group.students.filter(roll => !presentRolls.has(roll));
+      // Find the list of absentee roll numbers for this class
+      const absentRolls = group.studentRolls.filter(roll => !presentStudentRolls.has(roll));
       if (absentRolls.length > 0) {
         absenteeRows.push(['ABSENTEES ROLL NO :']);
         absenteeRows.push([sno, className, absentRolls.join(',')]);
       }
       
-      totalStrength += strength;
-      totalPresent += presentCount;
-      totalAbsentees += absentCount;
+      grandTotalStrength += strength;
+      grandTotalPresent += presentCount;
+      grandTotalAbsentees += absentCount;
       sno++;
     }
 
-    // Add Totals row to summary
-    const totalPercentage = totalStrength > 0 ? Math.round((totalPresent / totalStrength) * 100) : 0;
-    summaryRows.push(['Total', '', totalStrength, totalPresent, totalAbsentees, totalPercentage]);
+    // Add the final "Total" row to the summary
+    const grandTotalPercentage = grandTotalStrength > 0 ? Math.round((grandTotalPresent / grandTotalStrength) * 100) : 0;
+    summaryRows.push(['Total', '', grandTotalStrength, grandTotalPresent, grandTotalAbsentees, grandTotalPercentage]);
 
-    // 3. Combine all parts into the final structure for the Excel sheet
-    excelData.push(['', '', '', '', '', reportDate]); // Date header
-    excelData.push([]); // Spacer row
+    // 4. Combine all parts into the final structure for the Excel sheet
     excelData.push(...summaryRows);
-    excelData.push([]); // Spacer row
-    excelData.push([]); // Spacer row
-    excelData.push(...absenteeRows);
-
-    // 4. Generate and send the Excel file
+    if (absenteeRows.length > 0) {
+        excelData.push([]); // Spacer row
+        excelData.push([]); // Spacer row
+        excelData.push(...absenteeRows);
+    }
+    
+    // 5. Generate and send the Excel file
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.aoa_to_sheet(excelData);
 
@@ -2233,7 +2140,6 @@ app.post('/api/admin/attendance/summary/excel', async (req, res) => {
     worksheet['!cols'] = [ { wch: 8 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 15 } ];
     
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Report');
-
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     
     res.setHeader('Content-Disposition', `attachment; filename="Attendance-Report-${reportDate}.xlsx"`);
@@ -2243,6 +2149,85 @@ app.post('/api/admin/attendance/summary/excel', async (req, res) => {
   } catch (error) {
     console.error('[BACKEND] Error generating custom Excel summary:', error);
     res.status(500).json({ message: 'Failed to generate Excel file.' });
+  }
+});
+
+// Download attendance summary as Excel (Updated for specific format)
+// Replace this entire function in backend-server.js
+
+// Add this entire function back into your backend-server.js file
+
+app.post('/api/admin/attendance/summary', async (req, res) => {
+  try {
+    const { date, fromDate, toDate, periods, branches, years, sections, semesters } = req.body;
+
+    const studentQuery = {};
+    if (branches && branches.length > 0) studentQuery.branch = { $in: branches };
+    if (years && years.length > 0) studentQuery.year = { $in: years.map(y => parseInt(y)) };
+    if (sections && sections.length > 0) studentQuery.section = { $in: sections };
+    if (semesters && semesters.length > 0) studentQuery.semester = { $in: semesters };
+
+    const students = await User.find(studentQuery).select('roll name branch year section semester').lean();
+    if (students.length === 0) {
+      return res.json({ success: true, summary: [], absentees: [] });
+    }
+
+    const attendanceQuery = { period: { $in: periods } };
+    if (date) {
+      attendanceQuery.date = date;
+    } else if (fromDate && toDate) {
+      attendanceQuery.date = { $gte: fromDate, $lte: toDate };
+    }
+    
+    const presentStudentRolls = new Set(
+      await Attendance.find(attendanceQuery).distinct('studentRoll')
+    );
+    
+    const classGroups = {};
+    students.forEach(student => {
+      const classKey = `${student.branch}-${student.year}-${student.section}-${student.semester}`;
+      if (!classGroups[classKey]) {
+        classGroups[classKey] = {
+          className: `${student.branch} - ${student.year} Year - ${student.section} Sec - Sem ${student.semester}`,
+          studentRolls: []
+        };
+      }
+      classGroups[classKey].studentRolls.push(student.roll);
+    });
+
+    const summary = [];
+    const absentees = [];
+    let sno = 1;
+
+    for (const key in classGroups) {
+      const group = classGroups[key];
+      const totalStrength = group.studentRolls.length;
+      const totalPresent = group.studentRolls.filter(roll => presentStudentRolls.has(roll)).length;
+      const totalAbsentees = totalStrength - totalPresent;
+      const attendancePercent = totalStrength > 0 ? Math.round((totalPresent / totalStrength) * 100) : 0;
+      
+      summary.push({
+        sno: sno++,
+        className: group.className,
+        totalStrength,
+        totalPresent,
+        totalAbsentees,
+        attendancePercent
+      });
+      
+      group.studentRolls.forEach(roll => {
+        if (!presentStudentRolls.has(roll)) {
+          const student = students.find(s => s.roll === roll);
+          absentees.push({ roll: student.roll, name: student.name, className: group.className });
+        }
+      });
+    }
+
+    res.json({ success: true, summary, absentees });
+
+  } catch (error) {
+    console.error('[BACKEND] Error generating admin attendance summary:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate attendance summary' });
   }
 });
 

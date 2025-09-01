@@ -300,14 +300,13 @@
                                     <i class="fas fa-plus mr-2"></i>Add User
                                 </button>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                <!-- Filter controls -->
-                                <select id="filter-role" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                                <select id="filter-role" class="w-full px-4 py-2 border rounded-lg">
                                     <option value="">Filter by Role</option>
                                     <option value="student">Student</option>
                                     <option value="faculty">Faculty</option>
                                 </select>
-                                <select id="filter-department" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <select id="filter-department" class="w-full px-4 py-2 border rounded-lg">
                                     <option value="">Filter by Department</option>
                                     <option value="CSE">CSE</option>
                                     <option value="IT">IT</option>
@@ -318,18 +317,21 @@
                                     <option value="MECH">MECH</option>
                                     <option value="CIVIL">CIVIL</option>
                                     <option value="MCA">MCA</option>
-                                </select>
-                                <input type="text" id="search-user" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Search users...">
+                                    </select>
+                                <input type="text" id="search-user" class="w-full px-4 py-2 border rounded-lg md:col-span-1" placeholder="Search by name or ID...">
+                                <button id="search-filter-btn" class="w-full bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Search</button>
                             </div>
+
                             <div class="overflow-x-auto">
                                 <table class="w-full text-sm text-left text-gray-500">
                                     <thead class="text-xs text-gray-700 uppercase bg-gray-50">
                                         <tr>
                                             <th scope="col" class="px-6 py-3">Name</th>
                                             <th scope="col" class="px-6 py-3">Role</th>
-                                            <th scope="col" class="px-6 py-3">Department</th>
                                             <th scope="col" class="px-6 py-3">ID</th>
-                                            <th scope="col" class="px-6 py-3">Status</th>
+                                            <th scope="col" class="px-6 py-3">Branch</th>
+                                            <th scope="col" class="px-6 py-3">Year</th>
+                                            <th scope="col" class="px-6 py-3">Section</th>
                                             <th scope="col" class="px-6 py-3">Actions</th>
                                         </tr>
                                     </thead>
@@ -629,42 +631,70 @@
 
     <!-- NEW: Add/Edit User Modal -->
     <div id="user-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden modal-overlay">
-        <div class="bg-white rounded-xl shadow-lg w-full max-w-lg p-8 modal-container transform scale-95">
-            <h2 id="user-modal-title" class="text-2xl font-bold mb-6">Add New User</h2>
-            <form id="user-form" class="space-y-4">
-                <input type="hidden" id="user-id">
-                <div>
-                    <label for="user-name" class="block text-sm font-medium text-gray-700">Full Name</label>
-                    <input type="text" id="user-name" required class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
-                </div>
-                <div>
-                    <label for="user-email" class="block text-sm font-medium text-gray-700">Email</label>
-                    <input type="email" id="user-email" required class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
-                </div>
-                <div>
-                    <label for="user-role" class="block text-sm font-medium text-gray-700">Role</label>
-                    <select id="user-role" required class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
-                        <option value="student">Student</option>
-                        <option value="faculty">Faculty</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="user-department" class="block text-sm font-medium text-gray-700">Department</label>
-                    <input type="text" id="user-department" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
-                </div>
-                <div>
-                    <label for="user-roll" class="block text-sm font-medium text-gray-700">Student/Faculty ID</label>
-                    <input type="text" id="user-roll" required class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
-                </div>
-                <div>
-                    <label for="user-password" class="block text-sm font-medium text-gray-700">Password</label>
-                    <input type="password" id="user-password" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Leave blank to keep unchanged">
-                </div>
-                <div class="flex justify-end space-x-4 pt-4">
-                    <button type="button" id="cancel-user-btn" class="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg">Cancel</button>
-                    <button type="submit" class="px-6 py-2 gradient-bg text-white rounded-lg">Save User</button>
-                </div>
-            </form>
+        <div class="bg-white rounded-xl shadow-lg w-full max-w-2xl flex flex-col max-h-[90vh] modal-container transform scale-95">
+            
+            <div class="p-6 border-b">
+                <h2 id="user-modal-title" class="text-2xl font-bold mb-6">Add New User</h2>
+            </div>
+    
+            <div class="p-8 overflow-y-auto">
+                <form id="user-form" class="space-y-4">
+                    <input type="hidden" id="user-id">
+                    
+                    <div>
+                        <label for="user-department" class="block text-sm font-medium text-gray-700">Department</label>
+                        <input type="text" id="user-department" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label for="user-roll" class="block text-sm font-medium text-gray-700">ID</label>
+                        <input type="text" id="user-roll" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label for="user-name" class="block text-sm font-medium text-gray-700">name</label>
+                        <input type="text" id="user-name" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label for="user-email" class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="text" id="user-email" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div id="student-specific-fields" class="hidden space-y-4 pt-4 mt-4 border-t">
+                        <div>
+                            <label for="user-branch" class="block text-sm font-medium text-gray-700">Branch</label>
+                            <input type="text" id="user-branch" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label for="user-year" class="block text-sm font-medium text-gray-700">Year</label>
+                            <input type="number" id="user-year" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label for="user-section" class="block text-sm font-medium text-gray-700">Section</label>
+                            <input type="text" id="user-section" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label for="user-semester" class="block text-sm font-medium text-gray-700">Semester</label>
+                            <input type="text" id="user-semester" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+    
+                    <div>
+                        <label for="user-role" class="block text-sm font-medium text-gray-700">Role</label>
+                        <select id="user-role" required class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="student">Student</option>
+                            <option value="faculty">Faculty</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="user-password" class="block text-sm font-medium text-gray-700">Password</label>
+                        <input type="password" id="user-password" class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                </form>
+            </div>
+    
+            <div class="p-6 border-t flex justify-end space-x-4">
+                <button type="button" onclick="closeUserModal()" class="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg">Cancel</button>
+                <button type="submit" form="user-form" class="px-6 py-2 gradient-bg text-white rounded-lg">Save User</button>
+            </div>
         </div>
     </div>
 

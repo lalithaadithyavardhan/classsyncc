@@ -177,94 +177,98 @@ function loadAttendanceContent() {
             </div>`;
         
         loadStudentAttendanceSummary(currentUser.roll);
-    } else if (currentRole === 'faculty') {
-        // Clear before rendering for faculty
-        content.innerHTML = '';
-        content.innerHTML = `
-            <div>
-                <div class="mb-6">
-                    <h3 class="text-xl font-bold mb-4">Faculty Attendance Management</h3>
-                    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-                        <h4 class="font-semibold mb-4 text-gray-800">Select Class & Periods</h4>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Date:</label>
-                                <input type="date" id="attendance-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" value="${new Date().toISOString().split('T')[0]}">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Subject:</label>
-                                <select id="class-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                    <option value="">Select Subject</option>
-                                </select>
-                                <p id="class-select-helper" class="text-xs text-gray-500 mt-1">Filtered by faculty mapping (branch/year/section/semester)</p>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Periods:</label>
-                                <div class="flex flex-wrap gap-2">
-                                    ${[1,2,3,4,5,6,7].map(p => `
-                                        <label class="flex items-center">
-                                            <input type="checkbox" value="${p}" class="mr-1">
-                                            <span class="text-sm">${p}</span>
-                                        </label>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex gap-2">
-                            <button onclick="loadFacultyClasses()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                <i class="fas fa-sync mr-2"></i>Load Classes
-                            </button>
-                            <button onclick="showStudentsForAttendance()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                                <i class="fas fa-users mr-2"></i>Show Students
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-                        <h4 class="font-semibold mb-4 text-gray-800">Attendance Session Control</h4>
-                        <div class="flex gap-2 mb-4">
-                            <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
-                                <i class="fas fa-play mr-2"></i>Start Listening for Student Signals
-                            </button>
-                            <button onclick="stopAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">
-                                <i class="fas fa-stop mr-2"></i>Stop Listening
-                            </button>
-                            <button id="submit-attendance-btn" onclick="submitAttendance()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium hidden">
-                                <i class="fas fa-save mr-2"></i>Submit Attendance
-                            </button>
-                        </div>
-                        <div id="bluetooth-status" class="p-3 rounded-lg bg-gray-50">
-                            <p class="text-gray-600">Ready to start attendance session</p>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div class="bg-white p-6 rounded-lg shadow-md">
-                            <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
-                            <div id="class-students" class="space-y-2">
-                                <p class="text-gray-500">Select a class to see students</p>
-                            </div>
-                        </div>
-                        
-                        <div class="bg-white p-6 rounded-lg shadow-md">
-                            <h4 class="font-semibold mb-4 text-gray-800">Detected Student Signals</h4>
-                            <div id="detected-signals" class="space-y-2">
-                                <p class="text-gray-500">No student signals detected yet</p>
-                            </div>
-                        </div>
-                        
-                        <div class="bg-white p-6 rounded-lg shadow-md">
-                            <h4 class="font-semibold mb-4 text-gray-800">Attendance Records</h4>
-                            <div id="attendance-records" class="space-y-2">
-                                <p class="text-gray-500">No attendance records yet</p>
-                            </div>
-                        </div>
+// Find and replace this block in dashboard.js
+// Find and replace this entire block in your dashboard.js file
+
+} else if (currentRole === 'faculty') {
+    content.innerHTML = `
+        <h3 class="text-xl font-bold mb-4">Faculty Attendance Management</h3>
+        
+        <!-- 1. Top Control Bar -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Date:</label>
+                    <input type="date" id="attendance-date" class="w-full px-3 py-2 border rounded-lg" value="${new Date().toISOString().split('T')[0]}">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Subject:</label>
+                    <select id="class-select" class="w-full px-3 py-2 border rounded-lg"></select>
+                </div>
+                <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-2">Periods:</label>
+                     <div id="periods-checkboxes" class="flex flex-wrap gap-3 items-center pt-2">
+                        ${[1,2,3,4,5,6,7].map(p => `
+                            <label class="flex items-center gap-1 text-sm">
+                                <input type="checkbox" value="${p}" class="mr-1">
+                                <span>P${p}</span>
+                            </label>
+                        `).join('')}
                     </div>
                 </div>
-            </div>`;
-        
-        loadFacultyClasses();
-    } else if (currentRole === 'admin') {
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button onclick="loadFacultyClasses()" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Load Classes</button>
+                <button onclick="showStudentsForAttendance()" class="px-4 py-2 bg-green-600 text-white rounded-lg">Show Students</button>
+            </div>
+        </div>
+
+        <!-- 2. Attendance Session Control -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+             <h4 class="font-semibold mb-4 text-gray-800">Attendance Session Control</h4>
+            <div class="flex gap-2 mb-4">
+                <button onclick="startAttendanceSession()" class="px-6 py-3 bg-green-600 text-white rounded-lg font-medium">Start Listening for Student Signals</button>
+                <button onclick="stopAttendanceSession()" class="px-6 py-3 bg-red-600 text-white rounded-lg font-medium">Stop Listening</button>
+                <button onclick="submitAttendance()" class="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium">Submit Attendance</button>
+            </div>
+            <div id="bluetooth-status" class="p-3 rounded-lg bg-gray-50">Scanning has been stopped.</div>
+        </div>
+
+        <!-- 3. Three-Column Layout for Rosters -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Column 1: Class Students (Simple List) -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h4 class="font-semibold mb-4 text-gray-800">Class Students</h4>
+                <div id="class-students-list">
+                    <p class="text-gray-500">Select a class to see students.</p>
+                </div>
+            </div>
+
+            <!-- Column 2: Detected Signals -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h4 class="font-semibold mb-4 text-gray-800">Detected Student Signals</h4>
+                <div id="detected-signals" class="space-y-2">
+                    <p class="text-gray-500">No student signals detected yet.</p>
+                </div>
+            </div>
+
+            <!-- Column 3: Complete Attendance Roster (Interactive) -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h4 class="font-semibold mb-4 text-gray-800">Attendance Records</h4>
+                <div id="attendance-roster-section" class="hidden">
+                    <div class="bg-blue-50 p-4 rounded-lg text-center grid grid-cols-3 gap-4 mb-4">
+                        <div>
+                            <p class="text-2xl font-bold text-green-600" id="roster-present-count">0</p>
+                            <p class="text-sm font-medium">Present</p>
+                        </div>
+                        <div>
+                            <p class="text-2xl font-bold text-red-600" id="roster-absent-count">0</p>
+                            <p class="text-sm font-medium">Absent</p>
+                        </div>
+                        <div>
+                            <p class="text-2xl font-bold" id="roster-total-count">0</p>
+                            <p class="text-sm font-medium">Total</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-center text-gray-500 mb-4">You can manually override any student's status before submitting.</p>
+                    <div id="roster-list" class="space-y-2 max-h-96 overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+    `;
+    loadFacultyClasses();
+}
+    else if (currentRole === 'admin') {
         // For admin users, the HTML is already in the static file, just initialize the dropdowns
         console.log('[FRONTEND] Admin user detected, initializing existing HTML structure');
         
@@ -679,11 +683,12 @@ function initWebSocket() {
 
 // Handle WebSocket messages
 function handleWebSocketMessage(data) {
+    console.log('WebSocket message received:', data);
     switch (data.type) {
         case 'ATTENDANCE_RESPONSE':
             handleAttendanceResponse(data);
             break;
-        case 'STUDENT_SIGNAL_RESPONSE':
+        case 'STUDENT_SIGNAL_RESPONSE': // <-- Add this new case
             handleStudentSignalResponse(data);
             break;
         case 'DEVICE_FOUND':
@@ -702,7 +707,27 @@ function handleWebSocketMessage(data) {
             console.log('Unknown WebSocket message type:', data.type);
     }
 }
-
+function handleStudentSignalResponse(data) {
+    const statusElement = document.getElementById('attendance-status');
+    if (statusElement) {
+        if (data.success) {
+            statusElement.innerHTML = `
+                <div class="text-green-600 font-medium">
+                    <i class="fas fa-check-circle mr-2"></i>Signal Received! Your attendance has been marked.
+                </div>
+                <div class="text-sm text-gray-600 mt-2">
+                    Subject: ${data.subject || 'N/A'} | Period: ${data.period || 'N/A'}
+                </div>
+            `;
+        } else {
+            statusElement.innerHTML = `
+                <div class="text-red-600 font-medium">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Signal Rejected: ${data.message}
+                </div>
+            `;
+        }
+    }
+}
 // Handle attendance response
 function handleAttendanceResponse(data) {
     console.log('Attendance response:', data);
@@ -737,11 +762,37 @@ function handleDeviceFound(device) {
 }
 
 // Handle attendance marked (faculty)
+// Replace the old version with this one
 function handleAttendanceMarked(data) {
-    console.log('Attendance marked:', data);
-    // This will be handled by the faculty UI updates
-}
+    console.log('Attendance marked via signal:', data);
+    
+    // 1. Update the main roster on the right (existing logic)
+    if (attendanceState.has(data.roll)) {
+        attendanceState.set(data.roll, 'present');
+        renderAttendanceRoster();
+    }
 
+    // 2. Add the new signal to the "Detected Student Signals" box (new logic)
+    const detectedSignalsDiv = document.getElementById('detected-signals');
+    if (detectedSignalsDiv) {
+        // Clear the initial "No signals" message if it's there
+        const placeholder = detectedSignalsDiv.querySelector('p');
+        if (placeholder) {
+            placeholder.remove();
+        }
+
+        const signalHtml = `
+            <div class="p-2 border rounded-lg bg-blue-50">
+                <div class="text-sm font-medium text-blue-800">✓ Signal Received</div>
+                <div class="text-xs text-gray-600">${data.name || 'Student'} (${data.roll})</div>
+                <div class="text-xs text-gray-600">Time: ${new Date().toLocaleTimeString()}</div>
+            </div>
+        `;
+        // Add the new signal to the top of the list
+        detectedSignalsDiv.insertAdjacentHTML('afterbegin', signalHtml);
+    }
+}
+    // This will be handled by the faculty UI updates
 // Handle scan started (faculty)
 function handleScanStarted(data) {
     console.log('Scan started:', data);
@@ -892,7 +943,7 @@ async function loadDashboardContent(role) {
                 document.getElementById('student-count').textContent = students;
                 document.getElementById('faculty-count').textContent = faculty;
                 // Also load the user management table
-                populateUserTable(data.users);
+                initializeUserManagement(data.users);
             }
         } catch (error) {
             console.error("Failed to load user stats:", error);
@@ -1121,9 +1172,10 @@ function populateUserTable(users) {
         row.innerHTML = `
             <td class="px-6 py-4">${user.name || 'N/A'}</td>
             <td class="px-6 py-4"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.role === 'student' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}">${user.role}</span></td>
-            <td class="px-6 py-4">${user.department || 'N/A'}</td>
             <td class="px-6 py-4">${user.roll}</td>
-            <td class="px-6 py-4"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Active</span></td>
+            <td class="px-6 py-4">${user.branch || 'N/A'}</td>
+            <td class="px-6 py-4">${user.year || 'N/A'}</td>
+            <td class="px-6 py-4">${user.section || 'N/A'}</td>
             <td class="px-6 py-4 text-right text-sm font-medium">
                 <button onclick="openUserModal(event)" data-user='${JSON.stringify(user)}' class="text-indigo-600 hover:text-indigo-900"><i class="fas fa-edit"></i></button>
                 <button onclick="deleteUser('${user._id}')" class="text-red-600 hover:text-red-900 ml-4"><i class="fas fa-trash"></i></button>
@@ -1131,13 +1183,60 @@ function populateUserTable(users) {
         `;
     });
 }
+// Add these two new functions to dashboard.js
 
+let allUsers = []; // This will store the master list of users
+
+function filterAndDisplayUsers() {
+    const role = document.getElementById('filter-role').value;
+    const department = document.getElementById('filter-department').value;
+    const searchTerm = document.getElementById('search-user').value.toLowerCase();
+
+    const filteredUsers = allUsers.filter(user => {
+        const roleMatch = !role || user.role === role;
+        const departmentMatch = !department || user.department === department;
+        const searchMatch = !searchTerm || 
+                            user.name.toLowerCase().includes(searchTerm) || 
+                            user.roll.toLowerCase().includes(searchTerm);
+        return roleMatch && departmentMatch && searchMatch;
+    });
+
+    populateUserTable(filteredUsers);
+}
+
+function initializeUserManagement(users) {
+    allUsers = users; // Store the fetched users
+    populateUserTable(allUsers); // Display all users initially
+
+    // Add event listeners to controls
+    document.getElementById('search-filter-btn').addEventListener('click', filterAndDisplayUsers);
+    document.getElementById('filter-role').addEventListener('change', filterAndDisplayUsers);
+    document.getElementById('filter-department').addEventListener('change', filterAndDisplayUsers);
+}
+// Add this new function and event listener to dashboard.js
+function toggleStudentFields() {
+    const role = document.getElementById('user-role').value;
+    const studentFields = document.getElementById('student-specific-fields');
+    if (role === 'student') {
+        studentFields.classList.remove('hidden');
+    } else {
+        studentFields.classList.add('hidden');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const userRoleSelect = document.getElementById('user-role');
+    if (userRoleSelect) {
+        userRoleSelect.addEventListener('change', toggleStudentFields);
+    }
+});
+// Replace this entire function in dashboard.js
 function openUserModal(event) {
     const modal = document.getElementById('user-modal');
     const form = document.getElementById('user-form');
     form.reset();
     document.getElementById('user-id').value = '';
-    
+
     if (event && event.target.closest('button').dataset.user) {
         // Edit mode
         const user = JSON.parse(event.target.closest('button').dataset.user);
@@ -1148,13 +1247,20 @@ function openUserModal(event) {
         document.getElementById('user-role').value = user.role;
         document.getElementById('user-department').value = user.department;
         document.getElementById('user-roll').value = user.roll;
+        // Populate new student fields
+        document.getElementById('user-branch').value = user.branch || '';
+        document.getElementById('user-year').value = user.year || '';
+        document.getElementById('user-section').value = user.section || '';
+        document.getElementById('user-semester').value = user.semester || '';
+
         document.getElementById('user-password').placeholder = "Leave blank to keep unchanged";
     } else {
         // Add mode
         document.getElementById('user-modal-title').textContent = 'Add New User';
         document.getElementById('user-password').placeholder = "Required";
     }
-    
+
+    toggleStudentFields(); // Show/hide fields based on the role
     modal.classList.remove('hidden');
 }
 
@@ -1162,17 +1268,27 @@ function closeUserModal() {
     document.getElementById('user-modal').classList.add('hidden');
 }
 
+// Replace this entire function in dashboard.js
 async function handleUserFormSubmit(e) {
     e.preventDefault();
     const userId = document.getElementById('user-id').value;
+    const role = document.getElementById('user-role').value;
+
     const userData = {
         name: document.getElementById('user-name').value,
         email: document.getElementById('user-email').value,
-        role: document.getElementById('user-role').value,
+        role: role,
         department: document.getElementById('user-department').value,
         roll: document.getElementById('user-roll').value,
         password: document.getElementById('user-password').value,
     };
+
+    if (role === 'student') {
+        userData.branch = document.getElementById('user-branch').value;
+        userData.year = document.getElementById('user-year').value;
+        userData.section = document.getElementById('user-section').value;
+        userData.semester = document.getElementById('user-semester').value;
+    }
 
     const url = userId ? `/api/admin/users/${userId}` : '/api/admin/users';
     const method = userId ? 'PUT' : 'POST';
@@ -2262,42 +2378,98 @@ function markSimpleAttendance() {
 // Show students for attendance marking
 async function showStudentsForAttendance() {
     const classSelect = document.getElementById('class-select');
-    if (!classSelect || !classSelect.value) {
-        alert('Please select a class first');
-        return;
-    }
+    if (!classSelect || !classSelect.value) { return alert('Please select a class first'); }
     
     try {
         const response = await fetch(`/api/faculty/class/${classSelect.value}/students`);
         const data = await response.json();
         
         if (data.success) {
-            const studentsDiv = document.getElementById('class-students');
-            if (studentsDiv) {
-                studentsDiv.innerHTML = `
-                    <div class="bg-blue-50 p-3 rounded-lg mb-3">
-                        <h5 class="font-medium text-blue-800">${data.classData.subject} => ${data.classData.branch}, ${data.classData.year} -${data.classData.section} -${data.classData.semester}</h5>
-                        <p class="text-sm text-blue-600">Students: ${data.students.length}</p>
-                    </div>
-                    <div class="max-h-64 overflow-y-auto space-y-2">
-                        ${data.students.map((student, index) => `
-                            <div class="flex items-center justify-between p-2 border rounded-lg">
-                                <span class="text-sm">${index + 1}. ${student.name} (${student.roll})</span>
-                                <span class="text-xs text-gray-500">Period ${getSelectedPeriods().join(', ')}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            }
+            fullStudentList = data.students;
+            attendanceState.clear();
+
+            // Populate simple list (left column)
+            const simpleList = document.getElementById('class-students-list');
+            simpleList.innerHTML = `
+                <div class="bg-blue-50 p-3 rounded-lg mb-3">
+                    <h5 class="font-medium text-blue-800">${data.classData.subject} - ${data.classData.branch}${data.classData.year}${data.classData.section}</h5>
+                    <p class="text-sm">Students: ${data.students.length}</p>
+                </div>
+                <div class="max-h-96 overflow-y-auto space-y-2">
+                    ${data.students.map((student, index) => `
+                        <div class="flex items-center justify-between p-2">
+                            <span class="text-sm">${index + 1}. ${student.name} (${student.roll})</span>
+                            <span class="text-xs text-gray-400">Period ${getSelectedPeriods().join(', ')}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            // Initialize interactive roster (right column)
+            fullStudentList.forEach(student => {
+                attendanceState.set(student.roll, 'absent'); // Default everyone to absent
+            });
+            document.getElementById('attendance-roster-section').classList.remove('hidden');
+            renderAttendanceRoster();
+
         } else {
-            alert('Failed to load students: ' + data.message);
+            alert('Failed to load students: ' + (data.error || 'Unknown error'));
         }
     } catch (error) {
         console.error('Error loading students:', error);
-        alert('Error loading students');
     }
 }
+// Add these new functions to dashboard.js
 
+let fullStudentList = [];
+let attendanceState = new Map();
+
+function toggleAttendanceStatus(roll) {
+    const currentState = attendanceState.get(roll);
+    attendanceState.set(roll, currentState === 'present' ? 'absent' : 'present');
+    renderAttendanceRoster();
+}
+
+function renderAttendanceRoster() {
+    const rosterList = document.getElementById('roster-list');
+    const presentCountEl = document.getElementById('roster-present-count');
+    const absentCountEl = document.getElementById('roster-absent-count');
+    const totalCountEl = document.getElementById('roster-total-count');
+
+    if (!rosterList) return;
+    rosterList.innerHTML = '';
+    let presentCount = 0;
+
+    fullStudentList.forEach(student => {
+        const status = attendanceState.get(student.roll);
+        if (status === 'present') presentCount++;
+
+        const isPresent = status === 'present';
+        const itemClass = isPresent ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300';
+        const icon = isPresent ? '<i class="fas fa-check-circle text-green-600"></i>' : '<i class="fas fa-times-circle text-red-600"></i>';
+        const buttonText = isPresent ? 'Mark Absent' : 'Mark Present';
+        const buttonClass = isPresent ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600';
+
+        rosterList.innerHTML += `
+            <div class="flex items-center justify-between p-3 rounded-lg border ${itemClass}">
+                <div class="flex items-center gap-3">
+                    ${icon}
+                    <div>
+                        <p class="font-semibold">${student.name} (${student.roll})</p>
+                        <p class="text-xs text-gray-500">Period: ${getSelectedPeriods().join(', ')}</p>
+                    </div>
+                </div>
+                <button onclick="toggleAttendanceStatus('${student.roll}')" class="px-3 py-1 text-white text-xs font-medium rounded ${buttonClass}">
+                    ${buttonText}
+                </button>
+            </div>
+        `;
+    });
+
+    presentCountEl.textContent = presentCount;
+    absentCountEl.textContent = fullStudentList.length - presentCount;
+    totalCountEl.textContent = fullStudentList.length;
+}
 // Get selected periods
 function getSelectedPeriods() {
     const periodCheckboxes = document.querySelectorAll('input[type="checkbox"]:checked');
@@ -2554,73 +2726,30 @@ function showFinalAttendanceRecords(records) {
 
 // Submit attendance records manually
 async function submitAttendance() {
-    try {
-        const submitBtn = document.getElementById('submit-attendance-btn');
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
-        }
-        
-        const response = await fetch('/api/faculty/attendance/submit', {
-            method: 'POST'
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Show success message
-            const statusElement = document.getElementById('bluetooth-status');
-            if (statusElement) {
-                statusElement.innerHTML = `
-                    <div class="text-green-600 font-medium">
-                        <i class="fas fa-check-circle mr-2"></i>Attendance Submitted Successfully!
-                    </div>
-                    <div class="text-sm text-gray-600 mt-2">
-                        Total records saved: ${data.totalRecords} | Subject: ${data.subject} | Date: ${data.date}
-                    </div>
-                    <div class="text-sm text-blue-600 mt-2">
-                        Students can now view their updated attendance in their dashboard.
-                    </div>
-                `;
-            }
-            
-            // Hide submit button
-            if (submitBtn) {
-                submitBtn.classList.add('hidden');
-            }
-            
-            // Show final attendance records
-            if (data.savedRecords) {
-                showFinalAttendanceRecords(data.savedRecords);
-            }
-            
-            // Refresh student attendance data
-            setTimeout(() => {
-                if (currentUser && currentRole === 'faculty') {
-                    // Trigger a refresh of student attendance data
-                    console.log('Attendance submitted successfully, student data will be updated');
-                }
-            }, 1000);
-            
-        } else {
-            alert('Failed to submit attendance: ' + data.message);
-            
-            // Re-enable submit button
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i>Submit Attendance';
-            }
-        }
-    } catch (error) {
-        console.error('Error submitting attendance:', error);
-        alert('Network error submitting attendance');
-        
-        // Re-enable submit button
-        const submitBtn = document.getElementById('submit-attendance-btn');
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i>Submit Attendance';
-        }
+    if (attendanceState.size === 0) return alert('No attendance data to submit.');
+
+    const recordsToSubmit = [];
+    attendanceState.forEach((status, roll) => {
+        recordsToSubmit.push({ roll, status });
+    });
+
+    // You'll need to create this new backend endpoint in the next part
+    const response = await fetch('/api/faculty/attendance/submit-roster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            classId: document.getElementById('class-select').value,
+            date: document.getElementById('attendance-date').value,
+            periods: getSelectedPeriods(),
+            records: recordsToSubmit
+        })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+        alert('Attendance submitted successfully!');
+    } else {
+        alert('Failed to submit attendance: ' + result.message);
     }
 }
 
