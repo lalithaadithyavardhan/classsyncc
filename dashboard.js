@@ -8,6 +8,20 @@ let currentRole = null;
 let ws = null;
 let isBluetoothSupported = 'bluetooth' in navigator;
 
+// adding color palettes to the dashboard and timetable
+
+const colorPalettes = [
+    { bg: 'bg-blue-50', border: 'border-blue-500', text: 'text-blue-800' },
+    { bg: 'bg-green-50', border: 'border-green-500', text: 'text-green-800' },
+    { bg: 'bg-yellow-50', border: 'border-yellow-500', text: 'text-yellow-800' },
+    { bg: 'bg-red-50', border: 'border-red-500', text: 'text-red-800' },
+    { bg: 'bg-purple-50', border: 'border-purple-500', text: 'text-purple-800' },
+    { bg: 'bg-pink-50', border: 'border-pink-500', text: 'text-pink-800' },
+    { bg: 'bg-indigo-50', border: 'border-indigo-500', text: 'text-indigo-800' },
+    { bg: 'bg-teal-50', border: 'border-teal-500', text: 'text-teal-800' }
+];
+
+
 // ========================================================
 //          INITIALIZATION & CORE APP LOGIC
 // ========================================================
@@ -1559,52 +1573,57 @@ function loadTimetableContent() {
 }
 
 // Fetch and display user timetable
+// Replace your old fetchUserTimetable function with this new one
+
 async function fetchUserTimetable() {
     if (!currentUser) return;
     let url = '';
     if (currentRole === 'student') {
-        const { branch, year, section } = currentUser;
-        url = `/api/timetable/student?branch=${branch}&year=${year}&section=${section}`;
+        const { branch, year, section, semester } = currentUser;
+        const query = new URLSearchParams({ branch, year, section });
+        if (semester) query.set('semester', semester);
+        url = `/api/timetable/student?${query.toString()}`;
     } else if (currentRole === 'faculty') {
-        url = `/api/timetable/faculty/${currentUser.roll}`;
+        url = `/api/timetable/faculty/${currentUser.roll}${currentUser.semester ? `?semester=${encodeURIComponent(currentUser.semester)}` : ''}`;
     }
+
     try {
         const response = await fetch(url);
         const data = await response.json();
         const tableBody = document.getElementById('timetable-body');
         tableBody.innerHTML = '';
+
         if (data.success && data.timetable.length > 0) {
-            // Get unique faculty IDs to fetch names
+            // --- START: New Color Logic ---
+            const uniqueSubjects = [...new Set(data.timetable.map(entry => entry.subject))];
+            const subjectColorMap = new Map();
+            uniqueSubjects.forEach((subject, index) => {
+                subjectColorMap.set(subject, colorPalettes[index % colorPalettes.length]);
+            });
+            // --- END: New Color Logic ---
+
             const facultyIds = [...new Set(data.timetable.map(entry => entry.facultyId).filter(id => id))];
             let facultyNames = {};
             
-            // Fetch faculty names if we're showing student timetable
             if (currentRole === 'student' && facultyIds.length > 0) {
-                try {
-                    const facultyResponse = await fetch('/api/faculty/names', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ facultyIds })
-                    });
-                    const facultyData = await facultyResponse.json();
-                    if (facultyData.success) {
-                        facultyNames = facultyData.facultyNames;
-                    }
-                } catch (error) {
-                    console.error("Failed to fetch faculty names:", error);
+                const facultyResponse = await fetch('/api/faculty/names', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ facultyIds })
+                });
+                const facultyData = await facultyResponse.json();
+                if (facultyData.success) {
+                    facultyNames = facultyData.facultyNames;
                 }
             }
             
-            // Group by normalized start time (no AM/PM)
             const groupedByTime = data.timetable.reduce((acc, entry) => {
-                const key = String(entry.startTime).split(' ')[0];
-                if (!acc[key]) acc[key] = {};
-                acc[key][entry.day] = { ...entry, startTime: key };
+                if (!acc[entry.startTime]) acc[entry.startTime] = {};
+                acc[entry.startTime][entry.day] = entry;
                 return acc;
             }, {});
-            // Sort keys by minutes to avoid jumbled ordering and include ALL times present
-            const timeline = Object.keys(groupedByTime).sort((a,b) => timeStringToMinutes(a) - timeStringToMinutes(b));
-            for (const time of timeline) {
+
+            for (const time in groupedByTime) {
                 const row = tableBody.insertRow();
                 row.innerHTML = `<td class="px-6 py-4 font-medium">${time}</td>`;
                 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1613,31 +1632,40 @@ async function fetchUserTimetable() {
                     cell.className = 'px-6 py-4';
                     const entry = groupedByTime[time][day];
                     if (entry) {
-                        const facultyDisplay = currentRole === 'student' && entry.facultyId ? 
-                            (facultyNames[entry.facultyId] || entry.facultyId) : entry.facultyId || '';
-                        cell.innerHTML = `<div class="timetable-cell bg-indigo-50 border-l-4 border-indigo-500 p-2 rounded"><p class="font-semibold text-indigo-800">${entry.subject}</p><p class="text-xs text-gray-600">${entry.room}</p>${currentRole === 'student' && facultyDisplay ? `<p class="text-xs text-gray-500">${facultyDisplay}</p>` : ''}</div>`;
+                        const colors = subjectColorMap.get(entry.subject); // Get the assigned color
+                        const facultyDisplay = facultyNames[entry.facultyId] || entry.facultyId || '';
+                        
+                        // Use the dynamic colors in the HTML
+                        cell.innerHTML = `
+                            <div class="timetable-cell ${colors.bg} border-l-4 ${colors.border} p-2 rounded transition-transform duration-200">
+                                <p class="font-semibold ${colors.text}">${entry.subject}</p>
+                                <p class="text-xs text-gray-600">${entry.room}</p>
+                                ${currentRole === 'student' && facultyDisplay ? `<p class="text-xs text-gray-500">${facultyDisplay}</p>` : ''}
+                            </div>
+                        `;
                     }
                 });
             }
         } else {
             tableBody.innerHTML = `<tr><td colspan="7" class="text-center p-4">No timetable found.</td></tr>`;
         }
-    } catch (error) { 
-        console.error("Failed to fetch timetable:", error); 
-    }
+    } catch (error) { console.error("Failed to fetch timetable:", error); }
 }
 
 // Render the new faculty weekly timetable (card-based)
+// Replace your old renderFacultyWeeklyTimetable function with this new one
+
+// Replace this entire function in dashboard.js
+
 async function renderFacultyWeeklyTimetable() {
     const timetableDiv = document.getElementById('faculty-weekly-timetable');
     if (!timetableDiv) return;
-    timetableDiv.innerHTML = '';
+    timetableDiv.innerHTML = '<p class="text-gray-500">Loading timetable...</p>';
     timetableDiv.className = 'grid grid-cols-1 md:grid-cols-6 gap-4';
 
-    // Days of week (Monday to Saturday)
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    // Fetch timetable
     let timetable = [];
+
     try {
         const response = await fetch(`/api/timetable/faculty/${currentUser.roll}`);
         const data = await response.json();
@@ -1648,17 +1676,24 @@ async function renderFacultyWeeklyTimetable() {
         timetableDiv.innerHTML = '<p class="text-red-500">Failed to load timetable.</p>';
         return;
     }
-    // Group by day
+
+    const uniqueSubjects = [...new Set(timetable.map(entry => entry.subject))];
+    const subjectColorMap = new Map();
+    uniqueSubjects.forEach((subject, index) => {
+        subjectColorMap.set(subject, colorPalettes[index % colorPalettes.length]);
+    });
+
     const grouped = {};
     days.forEach(day => grouped[day] = []);
     timetable.forEach(entry => {
         if (grouped[entry.day]) grouped[entry.day].push(entry);
     });
-    // Sort each day's classes by start time
-            days.forEach(day => {
+    
+    days.forEach(day => {
         grouped[day].sort((a, b) => timeStringToMinutes(a.startTime) - timeStringToMinutes(b.startTime));
     });
-    // Render columns
+
+    timetableDiv.innerHTML = ''; 
     days.forEach(day => {
         const col = document.createElement('div');
         col.className = 'bg-gray-50 rounded-lg shadow p-2 flex flex-col';
@@ -1667,11 +1702,18 @@ async function renderFacultyWeeklyTimetable() {
             col.innerHTML += '<div class="text-gray-400 text-center py-4">No Classes</div>';
         } else {
             grouped[day].forEach(cls => {
+                const colors = subjectColorMap.get(cls.subject);
+                
+                // This is the updated HTML block with the new class details
                 col.innerHTML += `
-                <div class="mb-3 p-3 rounded-lg shadow-sm border-l-4" style="border-color: #6366f1; background: #f8fafc;">
-                    <div class="font-semibold text-indigo-800">${cls.subject}</div>
-                    <div class="text-xs text-gray-600">${cls.startTime} - ${getClassEndTime(cls.startTime)}</div>
-                    <div class="text-xs text-gray-500">Room ${cls.room}</div>
+                <div class="mb-3 p-3 rounded-lg shadow-sm border-l-4 ${colors.bg} ${colors.border}">
+                    <div class="font-semibold ${colors.text}">${cls.subject}</div>
+                    
+                    <div class="text-sm font-medium text-gray-800 mt-1">
+                        ${cls.branch} - ${cls.year} Year, ${cls.section} Sec
+                    </div>
+                    <div class="text-xs text-gray-600 mt-1">${cls.startTime} - ${getClassEndTime(cls.startTime)}</div>
+                    <div class="text-xs text-gray-500">Room ${cls.room} | Sem ${cls.semester}</div>
                 </div>`;
             });
         }
