@@ -963,14 +963,17 @@ async function loadDashboardContent(role) {
             console.error("Failed to load user stats:", error);
         }
     } else if (role === 'student') {
-        // Load current and next class information for students
+        console.log('[DEBUG] Step 2: Loading student dashboard...');
         await loadStudentDashboardClasses();
+        console.log('[DEBUG] Step 3: Calling renderWelcomeTab for student.');
+        renderWelcomeTab();
     } else if (role === 'faculty') {
-        // Load faculty dashboard information
+        console.log('[DEBUG] Step 2: Loading faculty dashboard...');
         await loadFacultyDashboardClasses();
+        console.log('[DEBUG] Step 3: Calling renderWelcomeTab for faculty.');
+        renderWelcomeTab();
     }
 }
-
 // Load student dashboard classes
 async function loadStudentDashboardClasses() {
     if (!currentUser || currentRole !== 'student') return;
@@ -1721,6 +1724,65 @@ async function renderFacultyWeeklyTimetable() {
     });
 }
 
+// Add this entire new function to dashboard.js
+
+// Replace the old renderWelcomeTab function with this new one
+
+async function renderWelcomeTab() {
+    // --- 1. Get Elements Dynamically based on currentRole ---
+    const greetingEl = document.getElementById(`${currentRole}-welcome-greeting`);
+    const dateEl = document.getElementById(`${currentRole}-welcome-date`);
+    const weatherEl = document.getElementById(`${currentRole}-weather-info`);
+
+    if (!greetingEl || !dateEl || !weatherEl) return;
+
+    // --- 2. Set Greetings and Date ---
+    const now = new Date();
+    const hour = now.getHours();
+    let timeOfDayGreeting = 'Welcome';
+    if (hour < 12) {
+        timeOfDayGreeting = 'Good Morning';
+    } else if (hour < 17) {
+        timeOfDayGreeting = 'Good Afternoon';
+    } else {
+        timeOfDayGreeting = 'Good Evening';
+    }
+    
+    greetingEl.textContent = `${timeOfDayGreeting}, ${currentUser.name.split(' ')[0]}!`;
+    dateEl.textContent = now.toLocaleDateString('en-IN', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    // --- 3. Fetch Weather Data ---
+    const apiKey = '547fd0430c9d934bf3b6f2f26441ff5a'; // <-- IMPORTANT: PASTE YOUR KEY HERE
+    const lat = '17.0894'; // Latitude for Surampalem, AP
+    const lon = '82.0668'; // Longitude for Surampalem, AP
+    const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+
+    try {
+        const response = await fetch(weatherUrl);
+        if (!response.ok) throw new Error('Weather data not available');
+        const weatherData = await response.json();
+
+        const temp = Math.round(weatherData.main.temp);
+        const description = weatherData.weather[0].description;
+        const icon = weatherData.weather[0].icon;
+
+        weatherEl.innerHTML = `
+            <img src="https://openweathermap.org/img/wn/${icon}.png" alt="Weather icon" class="w-12 h-12">
+            <div>
+                <p class="text-2xl font-bold">${temp}°C</p>
+                <p class="text-xs text-gray-500 capitalize">${description}</p>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Failed to fetch weather:', error);
+        weatherEl.innerHTML = `<p class="text-xs text-red-500">Could not load weather.</p>`;
+    }
+}
 // Admin Timetable Editor Functions
 function initAdminTimetableEditor() {
     const gridBody = document.getElementById('admin-timetable-grid-body');
